@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NextPhase Trading</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+        background: #0b0f1a;
+        color: #e6eefc;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+      }
+
+      .card {
+        max-width: 720px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 20px;
+        padding: 32px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(2rem, 4vw, 3rem);
+      }
+
+      p {
+        margin: 0 0 16px;
+        line-height: 1.6;
+        color: rgba(230, 238, 252, 0.8);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(62, 131, 255, 0.2);
+        color: #9ac2ff;
+        font-weight: 600;
+        font-size: 0.9rem;
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 18px;
+        color: rgba(230, 238, 252, 0.75);
+      }
+
+      li {
+        margin-bottom: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <span class="badge">Live update check</span>
+      <h1>NextPhase Trading — Stock Platform</h1>
+      <p>
+        This is a live deployment check. If you can see this message on Vercel,
+        the repository update and deployment pipeline are working.
+      </p>
+      <ul>
+        <li>Build a real-time stock dashboard</li>
+        <li>Connect to market data and news feeds</li>
+        <li>Launch trading workflows and alerts</li>
+      </ul>
+    </main>
+  </body>
+</html>
