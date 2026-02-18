@@ -38,6 +38,18 @@
       let chart;
       let lineSeries;
 
+      function createLineSeries() {
+        if (typeof chart.addLineSeries === "function") {
+          return chart.addLineSeries({ color: "#2962FF", lineWidth: 2 });
+        }
+
+        if (typeof chart.addSeries === "function" && LightweightCharts.LineSeries) {
+          return chart.addSeries(LightweightCharts.LineSeries, { color: "#2962FF", lineWidth: 2 });
+        }
+
+        throw new Error("Unsupported Lightweight Charts API version");
+      }
+
       function ensureChart() {
         if (!chart) {
           chart = LightweightCharts.createChart(chartEl, {
