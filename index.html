@@ -12,21 +12,65 @@
       .yes { color: #0a7a0a; font-weight: bold; }
       .no { color: #b00020; font-weight: bold; }
       pre { background: #f6f6f6; padding: 10px; border-radius: 8px; overflow: auto; }
+      #chart-card { margin-top: 16px; }
+      #chart { width: 100%; height: 320px; }
     </style>
   </head>
   <body>
-
     <input id="ticker" placeholder="TSLA" />
     <button id="btn">Check</button>
 
     <div id="result" class="card" style="display:none;"></div>
+    <div id="chart-card" class="card" style="display:none;">
+      <div id="chart"></div>
+    </div>
     <pre id="raw" style="display:none;"></pre>
 
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script>
       const tickerEl = document.getElementById("ticker");
       const btn = document.getElementById("btn");
       const resultEl = document.getElementById("result");
       const rawEl = document.getElementById("raw");
+      const chartCardEl = document.getElementById("chart-card");
+      const chartEl = document.getElementById("chart");
+
+      let chart;
+      let lineSeries;
+
+      function ensureChart() {
+        if (!chart) {
+          chart = LightweightCharts.createChart(chartEl, {
+            layout: { background: { color: "#ffffff" }, textColor: "#222" },
+            grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
+            rightPriceScale: { borderColor: "#ddd" },
+            timeScale: { borderColor: "#ddd", timeVisible: true, secondsVisible: false },
+          });
+          lineSeries = chart.addLineSeries({ color: "#2962FF", lineWidth: 2 });
+
+          const resize = () => {
+            chart.applyOptions({ width: chartEl.clientWidth || 800 });
+          };
+          window.addEventListener("resize", resize);
+          resize();
+        }
+      }
+
+      function setChartData(data) {
+        ensureChart();
+
+        const baseTime = Math.floor(Date.now() / 1000);
+        const points = [
+          { time: baseTime - 3 * 60, value: Number(data.prevClose) },
+          { time: baseTime - 2 * 60, value: Number(data.open) },
+          { time: baseTime - 60, value: Number(data.low) },
+          { time: baseTime - 30, value: Number(data.high) },
+          { time: baseTime, value: Number(data.current) },
+        ].filter((p) => Number.isFinite(p.value));
+
+        lineSeries.setData(points);
+        chart.timeScale().fitContent();
+      }
 
       function fmtPct(x) {
         return (x * 100).toFixed(2) + "%";
@@ -36,6 +80,7 @@
         const t = tickerEl.value.trim().toUpperCase();
         resultEl.style.display = "none";
         rawEl.style.display = "none";
+        chartCardEl.style.display = "none";
         resultEl.innerHTML = "Loading...";
 
         if (!t) return;
@@ -63,6 +108,9 @@
             <div>Time: ${data.timestamp || "N/A"}</div>
           `;
 
+          chartCardEl.style.display = "block";
+          setChartData(data);
+
           rawEl.style.display = "block";
           rawEl.textContent = JSON.stringify(data, null, 2);
         } catch (e) {
@@ -73,4 +121,3 @@
     </script>
   </body>
 </html>
-
