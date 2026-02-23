@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, LayoutDashboard, BookOpen, Newspaper, Lightbulb } from 'lucide-react';
+import { Activity, LayoutDashboard, BookOpen, Newspaper, Lightbulb, BarChart2 } from 'lucide-react';
 
 const NAV_LINKS = [
   { href: '/scanner',    label: 'Scanner',    icon: Activity },
+  { href: '/chart',      label: 'Chart',      icon: BarChart2 },
   { href: '/watchlist',  label: 'Watchlist',  icon: LayoutDashboard },
   { href: '/news',       label: 'News',       icon: Newspaper },
   { href: '/strategies', label: 'Strategies', icon: Lightbulb },

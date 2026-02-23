@@ -24,7 +24,7 @@ export interface StockQuote {
 
 // ─── Candle Types ─────────────────────────────────────────────────────────────
 
-export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D';
+export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D' | '1W' | '1M';
 
 export interface Candle {
   time: number; // unix timestamp

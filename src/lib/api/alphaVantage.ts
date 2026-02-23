@@ -12,6 +12,8 @@ const AV_FUNCTION_MAP: Record<string, string> = {
   '60m': 'TIME_SERIES_INTRADAY',
   '1h':  'TIME_SERIES_INTRADAY',
   '1D':  'TIME_SERIES_DAILY',
+  '1W':  'TIME_SERIES_WEEKLY',
+  '1M':  'TIME_SERIES_MONTHLY',
 };
 
 const AV_INTERVAL_MAP: Record<string, string> = {
