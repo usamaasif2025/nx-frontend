@@ -1,21 +1,15 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata } from 'next';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Momentum Scanner — AI Trading Dashboard",
-  description: "Real-time stock momentum scanner with AI strategy engine",
+  title: 'NX-1',
+  description: 'Pre-market chart viewer',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="antialiased bg-black text-white min-h-screen">
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
