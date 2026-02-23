@@ -94,9 +94,18 @@ function StockRow({ stock, onSelect }: { stock: StockQuote; onSelect: (s: StockQ
   );
 }
 
+function getSessionHint(session: string, minPct: number): string {
+  if (session === 'pre' && minPct > 3)
+    return `Pre-market: try lowering the threshold to 2–3% — large movers are rare before open`;
+  if (session === 'post')
+    return `Post-market: most moves are small — try 2–3%`;
+  return `Scanner updates every 30s`;
+}
+
 export default function ScannerTable({ onSelectStock }: { onSelectStock?: (symbol: string) => void }) {
   const { stocks, setStocks, isScanning, setScanning, minChangePercent, filterSession, lastUpdated } = useScannerStore();
   const { selectSymbol } = useScannerStore();
+  const [apiSession, setApiSession] = useState<string>('regular');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +115,7 @@ export default function ScannerTable({ onSelectStock }: { onSelectStock?: (symbo
     try {
       const { data } = await axios.get(`/api/scanner?minPct=${minChangePercent}`);
       setStocks(data.stocks || []);
+      if (data.session) setApiSession(data.session);
     } catch {
       setError('Failed to fetch scanner data. Check your API keys.');
     } finally {
@@ -178,7 +188,7 @@ export default function ScannerTable({ onSelectStock }: { onSelectStock?: (symbo
           <div className="text-center space-y-2">
             <Activity size={24} className="text-gray-700 mx-auto" />
             <p className="text-gray-600 text-sm">No stocks above {minChangePercent}%</p>
-            <p className="text-gray-700 text-xs">Scanner updates every 30s</p>
+            <p className="text-gray-700 text-xs">{getSessionHint(apiSession, minChangePercent)}</p>
           </div>
         </div>
       ) : (

@@ -26,7 +26,7 @@ export default function ScannerPage() {
       <div className="flex items-center gap-4 px-4 py-2 border-b border-[#111] mt-14 bg-[#050505]">
         <div className="flex items-center gap-2 text-xs">
           <span className="text-gray-600">Min Change:</span>
-          {[5, 7, 10, 15, 20].map((pct) => (
+          {[2, 3, 5, 7, 10].map((pct) => (
             <button
               key={pct}
               onClick={() => setMinChange(pct)}

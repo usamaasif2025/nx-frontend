@@ -27,7 +27,7 @@ export const useScannerStore = create<ScannerState>((set) => ({
   isScanning: false,
   lastUpdated: null,
   filterSession: 'all',
-  minChangePercent: 7,
+  minChangePercent: 3,
   sortBy: 'changePercent',
   sortDir: 'desc',
 

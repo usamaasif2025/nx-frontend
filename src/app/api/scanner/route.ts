@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as polygon from '@/lib/api/polygon';
 import * as alphaVantage from '@/lib/api/alphaVantage';
 import { getQuote } from '@/lib/api/finnhub';
+import { getExtendedHoursMovers } from '@/lib/api/yahooFinance';
 import { StockQuote, MarketSession } from '@/types';
 
 function getSession(): MarketSession {
@@ -11,36 +12,38 @@ function getSession(): MarketSession {
   const m = nyHour.getMinutes();
   const totalMins = h * 60 + m;
 
-  if (totalMins >= 240 && totalMins < 570) return 'pre';   // 4:00AM - 9:30AM ET
-  if (totalMins >= 570 && totalMins < 960) return 'regular'; // 9:30AM - 4:00PM ET
-  return 'post'; // 4:00PM - 8:00PM ET
+  if (totalMins >= 240 && totalMins < 570) return 'pre';    // 4:00 AM – 9:30 AM ET
+  if (totalMins >= 570 && totalMins < 960) return 'regular'; // 9:30 AM – 4:00 PM ET
+  return 'post';                                              // 4:00 PM – 8:00 PM ET
 }
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const minPct = parseFloat(searchParams.get('minPct') || '7');
+  const minPct = parseFloat(searchParams.get('minPct') || '3');
 
   try {
     const session = getSession();
-    const results: StockQuote[] = [];
+    let results: StockQuote[] = [];
 
-    // During pre-market use watchlist scanner (lastTrade vs prevDay),
-    // because the standard gainers endpoint relies on todaysChangePerc which
-    // is zero until the regular session opens.
-    let polygonGainers = session === 'pre'
-      ? await polygon.getPreMarketMovers(minPct)
-      : await polygon.getGainers(minPct);
+    // ── Extended hours (pre / post market) ──────────────────────────────────
+    // Yahoo Finance returns explicit preMarketPrice / postMarketPrice fields,
+    // so we get real extended-hours prices instead of stale snapshots.
+    if (session === 'pre' || session === 'post') {
+      results = await getExtendedHoursMovers(session, minPct);
 
-    // Fallback: if pre-market scanner returned nothing, try regular gainers
-    if (polygonGainers.length === 0) {
-      polygonGainers = await polygon.getGainers(minPct);
+      // If Yahoo Finance worked, return immediately
+      if (results.length > 0) {
+        return NextResponse.json({ stocks: results, session, updatedAt: Date.now() });
+      }
+      // else fall through to Polygon / Alpha Vantage as last resort
     }
+
+    // ── Regular session (or extended-hours fallback) ─────────────────────────
+    let polygonGainers = await polygon.getGainers(minPct);
 
     if (polygonGainers.length > 0) {
       for (const snap of polygonGainers.slice(0, 30)) {
-        // Enrich with Finnhub for real-time price
         const fq = await getQuote(snap.ticker);
-        // Pre-market: prefer lastTrade (extended-hours) over day close
         const price =
           (session === 'pre' ? snap.lastTrade?.p : null) ||
           fq?.c ||
@@ -58,7 +61,6 @@ export async function GET(req: Request) {
             price,
             change: price - prevClose,
             changePercent,
-            // Pre-market: day volume not yet available, use minute bar volume
             volume: snap.min?.v || snap.day?.v || 0,
             avgVolume: snap.prevDay?.v || snap.day?.v || 0,
             volumeRatio: 1,
@@ -73,7 +75,7 @@ export async function GET(req: Request) {
         }
       }
     } else {
-      // Fallback: Alpha Vantage top gainers
+      // Last resort: Alpha Vantage top gainers (reflects previous session)
       const avGainers = await alphaVantage.getTopGainers();
       for (const g of avGainers.slice(0, 20)) {
         const pct = parseFloat(g.changePercent?.replace('%', '') || '0');
