@@ -30,8 +30,10 @@ interface Props {
   candles: Candle[];
   regularStart: number;
   regularEnd: number;
-  currentPrice?: number;   // when set, draws a dotted price line (for D/W/MO)
-  previousClose?: number;
+  // Price lines — only passed for D/W/MO timeframes
+  closePrice?: number;       // regular session close  → gray dashed
+  preMarketPrice?: number;   // pre-market price       → colored dashed (if > 0)
+  postMarketPrice?: number;  // post-market price      → colored dashed (if > 0)
 }
 
 const UP   = '#26a69a';
@@ -39,13 +41,18 @@ const DOWN = '#ef5350';
 const UP_VOL   = '#1a3d38';
 const DOWN_VOL = '#3d1a1a';
 
-export default function NxChart({ candles, regularStart, regularEnd, currentPrice = 0, previousClose = 0 }: Props) {
+export default function NxChart({
+  candles, regularStart, regularEnd,
+  closePrice = 0, preMarketPrice = 0, postMarketPrice = 0,
+}: Props) {
   const containerRef    = useRef<HTMLDivElement>(null);
   const chartRef        = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const priceLineRef    = useRef<IPriceLine | null>(null);
-  const firstDataRef    = useRef(true);  // fitContent only on first load
+  const closeLineRef    = useRef<IPriceLine | null>(null);
+  const preLineRef      = useRef<IPriceLine | null>(null);
+  const postLineRef     = useRef<IPriceLine | null>(null);
+  const firstDataRef    = useRef(true);
 
   // ── Create chart once on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -112,11 +119,13 @@ export default function NxChart({ candles, regularStart, regularEnd, currentPric
     return () => {
       ro.disconnect();
       chart.remove();
-      chartRef.current      = null;
+      chartRef.current        = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      priceLineRef.current  = null;
-      firstDataRef.current  = true;
+      closeLineRef.current    = null;
+      preLineRef.current      = null;
+      postLineRef.current     = null;
+      firstDataRef.current    = true;
     };
   }, []); // runs once — never recreates the chart
 
@@ -151,30 +160,42 @@ export default function NxChart({ candles, regularStart, regularEnd, currentPric
     }
   }, [candles, regularStart, regularEnd]);
 
-  // ── Dotted current-price line (D / W / MO timeframes) ──────────────────
+  // ── Price lines (D / W / MO only) ─────────────────────────────────────
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
 
-    // Remove previous line first
-    if (priceLineRef.current) {
-      series.removePriceLine(priceLineRef.current);
-      priceLineRef.current = null;
+    // Clear all existing lines
+    if (closeLineRef.current)  { series.removePriceLine(closeLineRef.current);  closeLineRef.current  = null; }
+    if (preLineRef.current)    { series.removePriceLine(preLineRef.current);    preLineRef.current    = null; }
+    if (postLineRef.current)   { series.removePriceLine(postLineRef.current);   postLineRef.current   = null; }
+
+    // 1. Regular-session close (gray) — always drawn when closePrice is set
+    if (closePrice > 0) {
+      closeLineRef.current = series.createPriceLine({
+        price: closePrice, color: '#555555', lineWidth: 1,
+        lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'close',
+      });
     }
 
-    if (currentPrice <= 0) return;
+    // 2. Pre-market price (colored vs close)
+    if (preMarketPrice > 0) {
+      const up = preMarketPrice >= (closePrice || preMarketPrice);
+      preLineRef.current = series.createPriceLine({
+        price: preMarketPrice, color: up ? UP : DOWN, lineWidth: 1,
+        lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'pre',
+      });
+    }
 
-    const isUp = currentPrice >= (previousClose || currentPrice);
-
-    priceLineRef.current = series.createPriceLine({
-      price:            currentPrice,
-      color:            isUp ? UP : DOWN,
-      lineWidth:        1,
-      lineStyle:        LineStyle.Dashed,
-      axisLabelVisible: true,
-      title:            'now',
-    });
-  }, [currentPrice, previousClose]);
+    // 3. Post-market price (colored vs close)
+    if (postMarketPrice > 0) {
+      const up = postMarketPrice >= (closePrice || postMarketPrice);
+      postLineRef.current = series.createPriceLine({
+        price: postMarketPrice, color: up ? UP : DOWN, lineWidth: 1,
+        lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'post',
+      });
+    }
+  }, [closePrice, preMarketPrice, postMarketPrice]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }

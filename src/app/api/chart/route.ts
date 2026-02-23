@@ -72,10 +72,12 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       symbol,
-      name:          meta.longName || meta.shortName || symbol,
-      currency:      meta.currency || 'USD',
-      currentPrice:  meta.regularMarketPrice || closes[closes.length - 1] || 0,
-      previousClose: meta.chartPreviousClose || meta.previousClose || 0,
+      name:             meta.longName || meta.shortName || symbol,
+      currency:         meta.currency || 'USD',
+      currentPrice:     meta.regularMarketPrice || closes[closes.length - 1] || 0,
+      previousClose:    meta.chartPreviousClose  || meta.previousClose || 0,
+      preMarketPrice:   meta.preMarketPrice  || 0,
+      postMarketPrice:  meta.postMarketPrice || 0,
       regularStart,
       regularEnd,
       candles,

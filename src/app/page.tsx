@@ -21,6 +21,8 @@ interface ChartData {
   name: string;
   currentPrice: number;
   previousClose: number;
+  preMarketPrice: number;
+  postMarketPrice: number;
   regularStart: number;
   regularEnd: number;
   candles: Candle[];
@@ -241,8 +243,9 @@ export default function Home() {
             candles={data.candles}
             regularStart={data.regularStart}
             regularEnd={data.regularEnd}
-            currentPrice={!INTRADAY.includes(activeTf) ? data.currentPrice : 0}
-            previousClose={!INTRADAY.includes(activeTf) ? data.previousClose : 0}
+            closePrice={!INTRADAY.includes(activeTf) ? data.currentPrice : 0}
+            preMarketPrice={!INTRADAY.includes(activeTf) ? data.preMarketPrice : 0}
+            postMarketPrice={!INTRADAY.includes(activeTf) ? data.postMarketPrice : 0}
           />
         )}
       </main>
