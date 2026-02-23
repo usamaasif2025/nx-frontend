@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, FormEvent } from 'react';
+import { useState, useRef, useEffect, useCallback, FormEvent } from 'react';
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 
@@ -26,76 +26,106 @@ interface ChartData {
   candles: Candle[];
 }
 
-const REFRESH_INTERVAL = 10; // seconds
+type TF = '1m' | '1h' | '1d' | '1w' | '1mo';
+
+const TIMEFRAMES: { label: string; value: TF }[] = [
+  { label: '1M',  value: '1m'  },
+  { label: '1H',  value: '1h'  },
+  { label: '1D',  value: '1d'  },
+  { label: '1W',  value: '1w'  },
+  { label: 'MO',  value: '1mo' },
+];
+
+// Only intraday timeframes get live auto-refresh
+const INTRADAY: TF[] = ['1m', '1h'];
+const REFRESH_SEC = 10;
 
 export default function Home() {
-  const [ticker, setTicker]           = useState('');
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [data, setData]               = useState<ChartData | null>(null);
+  const [ticker, setTicker]         = useState('');
+  const [tf, setTf]                 = useState<TF>('1m');
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState<string | null>(null);
+  const [data, setData]             = useState<ChartData | null>(null);
   const [activeSymbol, setActiveSymbol] = useState('');
-  const [countdown, setCountdown]     = useState(REFRESH_INTERVAL);
-  const [refreshing, setRefreshing]   = useState(false);
+  const [activeTf, setActiveTf]     = useState<TF>('1m');
+  const [countdown, setCountdown]   = useState(REFRESH_SEC);
+  const [refreshing, setRefreshing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── Initial fetch ────────────────────────────────────────────────────────
+  // ── Shared fetch ─────────────────────────────────────────────────────────
+  const fetchChart = useCallback(async (sym: string, timeframe: TF, silent = false) => {
+    if (!silent) {
+      setLoading(true);
+      setError(null);
+      setData(null);
+    } else {
+      setRefreshing(true);
+    }
+    try {
+      const { data: res } = await axios.get(`/api/chart?symbol=${sym}&tf=${timeframe}`);
+      setData(res);
+      return true;
+    } catch (err: unknown) {
+      if (!silent) {
+        const msg = axios.isAxiosError(err)
+          ? err.response?.data?.error || err.message
+          : 'Failed to load chart';
+        setError(msg);
+      }
+      return false;
+    } finally {
+      if (!silent) setLoading(false);
+      else setRefreshing(false);
+    }
+  }, []);
+
+  // ── Form submit ──────────────────────────────────────────────────────────
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const sym = ticker.trim().toUpperCase();
     if (!sym) return;
-
-    setLoading(true);
-    setError(null);
-    setData(null);
-    setActiveSymbol('');
-
-    try {
-      const { data: res } = await axios.get(`/api/chart?symbol=${sym}`);
-      setData(res);
+    const ok = await fetchChart(sym, tf);
+    if (ok) {
       setActiveSymbol(sym);
-      setCountdown(REFRESH_INTERVAL);
-    } catch (err: unknown) {
-      const msg = axios.isAxiosError(err)
-        ? err.response?.data?.error || err.message
-        : 'Failed to load chart';
-      setError(msg);
-    } finally {
-      setLoading(false);
+      setActiveTf(tf);
+      setCountdown(REFRESH_SEC);
     }
   }
 
-  // ── Auto-refresh every 10 s ──────────────────────────────────────────────
-  useEffect(() => {
+  // ── Timeframe change while a symbol is already loaded ───────────────────
+  async function handleTfChange(next: TF) {
+    setTf(next);
     if (!activeSymbol) return;
+    const ok = await fetchChart(activeSymbol, next);
+    if (ok) {
+      setActiveTf(next);
+      setCountdown(REFRESH_SEC);
+    }
+  }
 
-    // Countdown tick (every second)
+  // ── Auto-refresh (intraday only) ─────────────────────────────────────────
+  useEffect(() => {
+    if (!activeSymbol || !INTRADAY.includes(activeTf)) return;
+
     const tick = setInterval(() => {
-      setCountdown((n) => (n <= 1 ? REFRESH_INTERVAL : n - 1));
+      setCountdown((n) => (n <= 1 ? REFRESH_SEC : n - 1));
     }, 1000);
 
-    // Actual refresh every 10 s
-    const refresh = setInterval(async () => {
-      setRefreshing(true);
-      setCountdown(REFRESH_INTERVAL);
-      try {
-        const { data: res } = await axios.get(`/api/chart?symbol=${activeSymbol}`);
-        setData(res);
-      } catch {
-        // silent — keep showing last good data
-      } finally {
-        setRefreshing(false);
-      }
-    }, REFRESH_INTERVAL * 1000);
+    const refresh = setInterval(() => {
+      setCountdown(REFRESH_SEC);
+      fetchChart(activeSymbol, activeTf, true);
+    }, REFRESH_SEC * 1000);
 
     return () => {
       clearInterval(tick);
       clearInterval(refresh);
     };
-  }, [activeSymbol]);
+  }, [activeSymbol, activeTf, fetchChart]);
 
   const change    = data ? data.currentPrice - data.previousClose : 0;
   const changePct = data?.previousClose ? (change / data.previousClose) * 100 : 0;
   const isUp      = change >= 0;
+  const isLive    = activeSymbol && INTRADAY.includes(activeTf);
 
   const preCnt     = data?.candles.filter((c) => c.session === 'pre').length     ?? 0;
   const regularCnt = data?.candles.filter((c) => c.session === 'regular').length ?? 0;
@@ -105,9 +135,8 @@ export default function Home() {
     <div className="flex flex-col h-screen bg-black text-white">
 
       {/* ── Header ── */}
-      <header className="flex items-center gap-5 px-5 py-3 border-b border-[#111] shrink-0 overflow-x-auto">
+      <header className="flex items-center gap-4 px-5 py-3 border-b border-[#111] shrink-0">
 
-        {/* Brand */}
         <span className="text-sm font-bold tracking-widest text-[#26a69a] shrink-0">NX-1</span>
 
         {/* Ticker form */}
@@ -129,11 +158,28 @@ export default function Home() {
           </button>
         </form>
 
+        {/* Timeframe selector */}
+        <div className="flex items-center gap-1 shrink-0">
+          {TIMEFRAMES.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => handleTfChange(t.value)}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all ${
+                tf === t.value
+                  ? 'bg-[#26a69a]/20 text-[#26a69a] border border-[#26a69a]/30'
+                  : 'text-gray-600 hover:text-gray-400 border border-transparent'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         {/* Price info */}
         {data && (
           <div className="flex items-center gap-3 shrink-0">
             <span className="font-bold text-white">{data.symbol}</span>
-            <span className="text-gray-600 text-xs hidden sm:inline">{data.name}</span>
+            <span className="text-gray-600 text-xs hidden md:inline">{data.name}</span>
             <span className="font-mono font-bold text-white">${data.currentPrice.toFixed(2)}</span>
             <span className={`text-xs font-bold font-mono ${isUp ? 'text-[#26a69a]' : 'text-[#ef5350]'}`}>
               {isUp ? '+' : ''}{change.toFixed(2)} ({isUp ? '+' : ''}{changePct.toFixed(2)}%)
@@ -141,8 +187,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Session counts */}
-        {data && (
+        {/* Session counts (intraday only) */}
+        {data && INTRADAY.includes(activeTf) && (
           <div className="flex items-center gap-3 text-xs text-gray-600 shrink-0">
             {preCnt > 0     && <span>Pre <span className="text-gray-500">{preCnt}</span></span>}
             {regularCnt > 0 && <span>Reg <span className="text-gray-500">{regularCnt}</span></span>}
@@ -150,14 +196,13 @@ export default function Home() {
           </div>
         )}
 
-        {/* Live / refresh indicator */}
-        {activeSymbol && (
+        {/* Live indicator */}
+        {isLive && (
           <div className="ml-auto flex items-center gap-2 shrink-0">
-            {refreshing ? (
-              <span className="w-3 h-3 border border-[#26a69a]/40 border-t-[#26a69a] rounded-full animate-spin" />
-            ) : (
-              <span className="w-1.5 h-1.5 rounded-full bg-[#26a69a] animate-pulse" />
-            )}
+            {refreshing
+              ? <span className="w-3 h-3 border border-[#26a69a]/40 border-t-[#26a69a] rounded-full animate-spin" />
+              : <span className="w-1.5 h-1.5 rounded-full bg-[#26a69a] animate-pulse" />
+            }
             <span className="text-xs text-gray-700 font-mono">{countdown}s</span>
           </div>
         )}
@@ -166,7 +211,6 @@ export default function Home() {
       {/* ── Chart area ── */}
       <main className="flex-1 overflow-hidden relative">
 
-        {/* Empty state */}
         {!loading && !data && !error && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <p className="text-4xl font-black tracking-widest text-[#111]">NX-1</p>
@@ -174,17 +218,15 @@ export default function Home() {
           </div>
         )}
 
-        {/* Loading */}
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="flex items-center gap-3 text-gray-500 text-sm">
               <span className="w-4 h-4 border-2 border-[#26a69a]/30 border-t-[#26a69a] rounded-full animate-spin" />
-              Fetching {ticker}…
+              Fetching {ticker} {TIMEFRAMES.find((t) => t.value === tf)?.label}…
             </div>
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center space-y-2">
@@ -194,7 +236,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Chart */}
         {data && data.candles.length > 0 && (
           <NxChart
             candles={data.candles}
