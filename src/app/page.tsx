@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback, FormEvent } from 'react';
 import dynamic from 'next/dynamic';
 import axios from 'axios';
 
-const NxChart = dynamic(() => import('@/components/NxChart'), { ssr: false });
+const NxChart    = dynamic(() => import('@/components/NxChart'),  { ssr: false });
+const NewsPanel  = dynamic(() => import('@/components/NewsPanel'), { ssr: false });
 
 interface Candle {
   time: number;
@@ -245,47 +246,55 @@ export default function Home() {
         )}
       </header>
 
-      {/* ── Chart area ── */}
-      <main className="flex-1 overflow-hidden relative">
+      {/* ── Chart + News ── */}
+      <main className="flex-1 overflow-hidden flex">
 
-        {!loading && !data && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <p className="text-4xl font-black tracking-widest text-[#111]">NX-1</p>
-            <p className="text-gray-700 text-sm">Enter a ticker to load the chart</p>
-          </div>
-        )}
+        {/* Chart column */}
+        <div className="flex-1 overflow-hidden relative">
 
-        {loading && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex items-center gap-3 text-gray-500 text-sm">
-              <span className="w-4 h-4 border-2 border-[#26a69a]/30 border-t-[#26a69a] rounded-full animate-spin" />
-              Fetching {ticker} {TIMEFRAMES.find((t) => t.value === tf)?.label}…
+          {!loading && !data && !error && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <p className="text-4xl font-black tracking-widest text-[#111]">NX-1</p>
+              <p className="text-gray-700 text-sm">Enter a ticker to load the chart</p>
             </div>
-          </div>
-        )}
+          )}
 
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="text-center space-y-2">
-              <p className="text-[#ef5350] text-sm font-medium">{error}</p>
-              <p className="text-gray-700 text-xs">Check the ticker and try again</p>
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-3 text-gray-500 text-sm">
+                <span className="w-4 h-4 border-2 border-[#26a69a]/30 border-t-[#26a69a] rounded-full animate-spin" />
+                Fetching {ticker} {TIMEFRAMES.find((t) => t.value === tf)?.label}…
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {data && data.candles.length > 0 && (
-          <NxChart
-            candles={data.candles}
-            regularStart={data.regularStart}
-            regularEnd={data.regularEnd}
-            closePrice={!INTRADAY.includes(activeTf) ? data.currentPrice : 0}
-            preMarketPrice={!INTRADAY.includes(activeTf) ? data.preMarketPrice : 0}
-            postMarketPrice={!INTRADAY.includes(activeTf) ? data.postMarketPrice : 0}
-            lastDayHigh={data.lastDayHigh}
-            lastWeekHigh={data.lastWeekHigh}
-            lastMonthHigh={data.lastMonthHigh}
-          />
-        )}
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <p className="text-[#ef5350] text-sm font-medium">{error}</p>
+                <p className="text-gray-700 text-xs">Check the ticker and try again</p>
+              </div>
+            </div>
+          )}
+
+          {data && data.candles.length > 0 && (
+            <NxChart
+              candles={data.candles}
+              regularStart={data.regularStart}
+              regularEnd={data.regularEnd}
+              closePrice={!INTRADAY.includes(activeTf) ? data.currentPrice : 0}
+              preMarketPrice={!INTRADAY.includes(activeTf) ? data.preMarketPrice : 0}
+              postMarketPrice={!INTRADAY.includes(activeTf) ? data.postMarketPrice : 0}
+              lastDayHigh={data.lastDayHigh}
+              lastWeekHigh={data.lastWeekHigh}
+              lastMonthHigh={data.lastMonthHigh}
+            />
+          )}
+        </div>
+
+        {/* News sidebar — only when a symbol is loaded */}
+        {data && <NewsPanel symbol={data.symbol} />}
+
       </main>
 
     </div>
