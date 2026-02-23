@@ -15,6 +15,9 @@ export default async function handler(req, res) {
 
     const url = `https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${encodeURIComponent(apiKey)}`;
     const r = await fetch(url);
+    if (!r.ok) {
+      return res.status(502).json({ error: "Search provider error" });
+    }
     const data = await r.json();
 
     res.status(200).json(data);

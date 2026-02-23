@@ -2,13 +2,9 @@
   "version": 2,
   "functions": {
     "api/*.js": {
-      "runtime": "vercel-node@4.0.0"
+      "runtime": "@vercel/node@4.x"
     }
   },
-  "builds": [
-    { "src": "api/*.js", "use": "@vercel/node" },
-    { "src": "index.html", "use": "@vercel/static" }
-  ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/(.*)", "dest": "/index.html" }
