@@ -170,6 +170,10 @@ export async function GET(req: Request) {
     const previousClose   = liveQuote.regularMarketPreviousClose || meta.chartPreviousClose  || meta.previousClose        || 0;
     const preMarketPrice  = liveQuote.preMarketPrice             || meta.preMarketPrice       || 0;
     const postMarketPrice = liveQuote.postMarketPrice            || meta.postMarketPrice      || 0;
+    const bid             = liveQuote.bid  || 0;
+    const ask             = liveQuote.ask  || 0;
+    const bidSize         = liveQuote.bidSize || 0;
+    const askSize         = liveQuote.askSize || 0;
 
     return NextResponse.json({
       symbol,
@@ -179,6 +183,10 @@ export async function GET(req: Request) {
       previousClose,
       preMarketPrice,
       postMarketPrice,
+      bid,
+      ask,
+      bidSize,
+      askSize,
       lastDayHigh,
       lastWeekHigh,
       lastMonthHigh,

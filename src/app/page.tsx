@@ -23,6 +23,10 @@ interface ChartData {
   previousClose: number;
   preMarketPrice: number;
   postMarketPrice: number;
+  bid: number;
+  ask: number;
+  bidSize: number;
+  askSize: number;
   lastDayHigh: number;
   lastWeekHigh: number;
   lastMonthHigh: number;
@@ -189,6 +193,34 @@ export default function Home() {
             <span className={`text-xs font-bold font-mono ${isUp ? 'text-[#26a69a]' : 'text-[#ef5350]'}`}>
               {isUp ? '+' : ''}{change.toFixed(2)} ({isUp ? '+' : ''}{changePct.toFixed(2)}%)
             </span>
+          </div>
+        )}
+
+        {/* Bid / Ask (intraday only) */}
+        {data && INTRADAY.includes(activeTf) && data.bid > 0 && data.ask > 0 && (
+          <div className="flex items-center gap-3 shrink-0 border-l border-[#1a1a1a] pl-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-gray-600 uppercase tracking-wider">Bid</span>
+              <span className="font-mono text-sm font-bold text-[#26a69a]">{data.bid.toFixed(2)}</span>
+              {data.bidSize > 0 && (
+                <span className="text-[10px] text-gray-700">×{data.bidSize}</span>
+              )}
+            </div>
+            <div className="w-px h-3 bg-[#222]" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-gray-600 uppercase tracking-wider">Ask</span>
+              <span className="font-mono text-sm font-bold text-[#ef5350]">{data.ask.toFixed(2)}</span>
+              {data.askSize > 0 && (
+                <span className="text-[10px] text-gray-700">×{data.askSize}</span>
+              )}
+            </div>
+            <div className="w-px h-3 bg-[#222]" />
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-600">Spread</span>
+              <span className="font-mono text-[11px] text-gray-500">
+                {(data.ask - data.bid).toFixed(2)}
+              </span>
+            </div>
           </div>
         )}
 
