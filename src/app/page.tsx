@@ -241,6 +241,8 @@ export default function Home() {
             candles={data.candles}
             regularStart={data.regularStart}
             regularEnd={data.regularEnd}
+            currentPrice={!INTRADAY.includes(activeTf) ? data.currentPrice : 0}
+            previousClose={!INTRADAY.includes(activeTf) ? data.previousClose : 0}
           />
         )}
       </main>

@@ -7,8 +7,10 @@ import {
   HistogramSeries,
   ColorType,
   CrosshairMode,
+  LineStyle,
   IChartApi,
   ISeriesApi,
+  IPriceLine,
   CandlestickData,
   HistogramData,
   Time,
@@ -28,6 +30,8 @@ interface Props {
   candles: Candle[];
   regularStart: number;
   regularEnd: number;
+  currentPrice?: number;   // when set, draws a dotted price line (for D/W/MO)
+  previousClose?: number;
 }
 
 const UP   = '#26a69a';
@@ -35,12 +39,13 @@ const DOWN = '#ef5350';
 const UP_VOL   = '#1a3d38';
 const DOWN_VOL = '#3d1a1a';
 
-export default function NxChart({ candles, regularStart, regularEnd }: Props) {
-  const containerRef   = useRef<HTMLDivElement>(null);
-  const chartRef       = useRef<IChartApi | null>(null);
+export default function NxChart({ candles, regularStart, regularEnd, currentPrice = 0, previousClose = 0 }: Props) {
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const chartRef        = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const firstDataRef   = useRef(true);  // fitContent only on first load
+  const priceLineRef    = useRef<IPriceLine | null>(null);
+  const firstDataRef    = useRef(true);  // fitContent only on first load
 
   // ── Create chart once on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -107,10 +112,11 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
     return () => {
       ro.disconnect();
       chart.remove();
-      chartRef.current       = null;
+      chartRef.current      = null;
       candleSeriesRef.current = null;
       volumeSeriesRef.current = null;
-      firstDataRef.current   = true;
+      priceLineRef.current  = null;
+      firstDataRef.current  = true;
     };
   }, []); // runs once — never recreates the chart
 
@@ -144,6 +150,31 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
       firstDataRef.current = false;
     }
   }, [candles, regularStart, regularEnd]);
+
+  // ── Dotted current-price line (D / W / MO timeframes) ──────────────────
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    // Remove previous line first
+    if (priceLineRef.current) {
+      series.removePriceLine(priceLineRef.current);
+      priceLineRef.current = null;
+    }
+
+    if (currentPrice <= 0) return;
+
+    const isUp = currentPrice >= (previousClose || currentPrice);
+
+    priceLineRef.current = series.createPriceLine({
+      price:            currentPrice,
+      color:            isUp ? UP : DOWN,
+      lineWidth:        1,
+      lineStyle:        LineStyle.Dashed,
+      axisLabelVisible: true,
+      title:            'now',
+    });
+  }, [currentPrice, previousClose]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }
