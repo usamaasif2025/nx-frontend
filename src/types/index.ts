@@ -122,6 +122,22 @@ export interface WatchlistItem {
   pinned: boolean;
 }
 
+// ─── Claude AI Analysis ───────────────────────────────────────────────────────
+
+export interface ClaudeAnalysisResult {
+  symbol: string;
+  conviction: 'A' | 'B' | 'C';
+  direction: 'long' | 'short' | 'neutral';
+  entry_price: number;
+  stop_loss: number;
+  target_price: number;
+  summary: string;
+  catalysts: string[];
+  risks: string[];
+  key_levels: string[];
+  generatedAt: number;
+}
+
 // ─── API Config ───────────────────────────────────────────────────────────────
 
 export interface ApiKeys {
