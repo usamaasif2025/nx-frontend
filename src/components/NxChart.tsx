@@ -30,10 +30,14 @@ interface Props {
   candles: Candle[];
   regularStart: number;
   regularEnd: number;
-  // Price lines — only passed for D/W/MO timeframes
-  closePrice?: number;       // regular session close  → gray dashed
-  preMarketPrice?: number;   // pre-market price       → colored dashed (if > 0)
-  postMarketPrice?: number;  // post-market price      → colored dashed (if > 0)
+  // Extended-hours price lines (D/W/MO only)
+  closePrice?: number;
+  preMarketPrice?: number;
+  postMarketPrice?: number;
+  // Key level lines (all timeframes)
+  lastDayHigh?: number;
+  lastWeekHigh?: number;
+  lastMonthHigh?: number;
 }
 
 const UP   = '#26a69a';
@@ -44,6 +48,7 @@ const DOWN_VOL = '#3d1a1a';
 export default function NxChart({
   candles, regularStart, regularEnd,
   closePrice = 0, preMarketPrice = 0, postMarketPrice = 0,
+  lastDayHigh = 0, lastWeekHigh = 0, lastMonthHigh = 0,
 }: Props) {
   const containerRef    = useRef<HTMLDivElement>(null);
   const chartRef        = useRef<IChartApi | null>(null);
@@ -52,6 +57,9 @@ export default function NxChart({
   const closeLineRef    = useRef<IPriceLine | null>(null);
   const preLineRef      = useRef<IPriceLine | null>(null);
   const postLineRef     = useRef<IPriceLine | null>(null);
+  const dayHighLineRef  = useRef<IPriceLine | null>(null);
+  const weekHighLineRef = useRef<IPriceLine | null>(null);
+  const monHighLineRef  = useRef<IPriceLine | null>(null);
   const firstDataRef    = useRef(true);
 
   // ── Create chart once on mount ──────────────────────────────────────────
@@ -125,6 +133,9 @@ export default function NxChart({
       closeLineRef.current    = null;
       preLineRef.current      = null;
       postLineRef.current     = null;
+      dayHighLineRef.current  = null;
+      weekHighLineRef.current = null;
+      monHighLineRef.current  = null;
       firstDataRef.current    = true;
     };
   }, []); // runs once — never recreates the chart
@@ -160,42 +171,41 @@ export default function NxChart({
     }
   }, [candles, regularStart, regularEnd]);
 
-  // ── Price lines (D / W / MO only) ─────────────────────────────────────
+  // ── All price lines ────────────────────────────────────────────────────
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
 
-    // Clear all existing lines
-    if (closeLineRef.current)  { series.removePriceLine(closeLineRef.current);  closeLineRef.current  = null; }
-    if (preLineRef.current)    { series.removePriceLine(preLineRef.current);    preLineRef.current    = null; }
-    if (postLineRef.current)   { series.removePriceLine(postLineRef.current);   postLineRef.current   = null; }
+    // Clear every managed line
+    const clear = (ref: React.MutableRefObject<IPriceLine | null>) => {
+      if (ref.current) { series.removePriceLine(ref.current); ref.current = null; }
+    };
+    clear(closeLineRef); clear(preLineRef); clear(postLineRef);
+    clear(dayHighLineRef); clear(weekHighLineRef); clear(monHighLineRef);
 
-    // 1. Regular-session close (gray) — always drawn when closePrice is set
-    if (closePrice > 0) {
-      closeLineRef.current = series.createPriceLine({
-        price: closePrice, color: '#555555', lineWidth: 1,
-        lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'close',
+    const line = (
+      ref: React.MutableRefObject<IPriceLine | null>,
+      price: number, color: string, title: string,
+      style: LineStyle = LineStyle.Dashed,
+    ) => {
+      if (price <= 0) return;
+      ref.current = series.createPriceLine({
+        price, color, lineWidth: 1, lineStyle: style,
+        axisLabelVisible: true, title,
       });
-    }
+    };
 
-    // 2. Pre-market price (colored vs close)
-    if (preMarketPrice > 0) {
-      const up = preMarketPrice >= (closePrice || preMarketPrice);
-      preLineRef.current = series.createPriceLine({
-        price: preMarketPrice, color: up ? UP : DOWN, lineWidth: 1,
-        lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'pre',
-      });
-    }
+    // Extended-hours lines (D/W/MO only — caller passes 0 for intraday)
+    line(closeLineRef, closePrice, '#555555', 'close');
+    line(preLineRef,  preMarketPrice,  preMarketPrice  >= (closePrice || preMarketPrice)  ? UP : DOWN, 'pre');
+    line(postLineRef, postMarketPrice, postMarketPrice >= (closePrice || postMarketPrice) ? UP : DOWN, 'post');
 
-    // 3. Post-market price (colored vs close)
-    if (postMarketPrice > 0) {
-      const up = postMarketPrice >= (closePrice || postMarketPrice);
-      postLineRef.current = series.createPriceLine({
-        price: postMarketPrice, color: up ? UP : DOWN, lineWidth: 1,
-        lineStyle: LineStyle.Dashed, axisLabelVisible: true, title: 'post',
-      });
-    }
-  }, [closePrice, preMarketPrice, postMarketPrice]);
+    // Key level lines — shown on every timeframe
+    line(dayHighLineRef,  lastDayHigh,   '#f59e0b', 'D-H',  LineStyle.SparseDotted);
+    line(weekHighLineRef, lastWeekHigh,  '#a855f7', 'W-H',  LineStyle.SparseDotted);
+    line(monHighLineRef,  lastMonthHigh, '#3b82f6', 'M-H',  LineStyle.SparseDotted);
+
+  }, [closePrice, preMarketPrice, postMarketPrice, lastDayHigh, lastWeekHigh, lastMonthHigh]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }

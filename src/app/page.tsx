@@ -23,6 +23,9 @@ interface ChartData {
   previousClose: number;
   preMarketPrice: number;
   postMarketPrice: number;
+  lastDayHigh: number;
+  lastWeekHigh: number;
+  lastMonthHigh: number;
   regularStart: number;
   regularEnd: number;
   candles: Candle[];
@@ -246,6 +249,9 @@ export default function Home() {
             closePrice={!INTRADAY.includes(activeTf) ? data.currentPrice : 0}
             preMarketPrice={!INTRADAY.includes(activeTf) ? data.preMarketPrice : 0}
             postMarketPrice={!INTRADAY.includes(activeTf) ? data.postMarketPrice : 0}
+            lastDayHigh={data.lastDayHigh}
+            lastWeekHigh={data.lastWeekHigh}
+            lastMonthHigh={data.lastMonthHigh}
           />
         )}
       </main>
