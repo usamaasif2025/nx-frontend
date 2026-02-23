@@ -1,46 +1,53 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Phase 1 Ticker</title>
+    <title>Stock Dashboard - Phase 1</title>
+
     <style>
-      body { font-family: Arial, sans-serif; padding: 20px; }
+      body { font-family: Arial, sans-serif; padding: 20px; background: #fafafa; }
       input, select { padding: 10px; font-size: 16px; }
-      button { padding: 10px 14px; font-size: 16px; cursor: pointer; }
-      .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-      .card { margin-top: 16px; padding: 14px; border: 1px solid #ddd; border-radius: 10px; }
+      button { padding: 10px 14px; font-size: 16px; cursor: pointer; background: #1976d2; color: white; border: none; border-radius: 4px; }
+      button:hover { background: #1565c0; }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+      .card { margin-top: 16px; padding: 14px; border: 1px solid #ddd; border-radius: 10px; background: #fff; box-shadow: 0 0 8px rgba(0,0,0,0.05); }
       .yes { color: #0a7a0a; font-weight: bold; }
       .no { color: #b00020; font-weight: bold; }
       .muted { color: #666; font-size: 13px; }
       pre { background: #f6f6f6; padding: 10px; border-radius: 8px; overflow: auto; }
-      #chart-card { margin-top: 16px; }
       #chart { width: 100%; height: 420px; }
     </style>
   </head>
+
   <body>
+    <h2>📈 Trading Dashboard</h2>
     <div class="toolbar">
-      <input id="ticker" placeholder="TSLA" />
+      <input id="ticker" placeholder="Enter ticker symbol (e.g. TSLA)" />
       <button id="btn">Check</button>
       <label for="timeframe">Timeframe:</label>
       <select id="timeframe">
-        <option value="10s">10 sec</option>
-        <option value="1m">1 min</option>
-        <option value="1h">1 hour</option>
-        <option value="1d" selected>1 day</option>
-        <option value="1w">1 week</option>
-        <option value="1mo">1 month</option>
+        <option value="1mo">1 Month</option>
+        <option value="1w">1 Week</option>
+        <option value="1d" selected>1 Day</option>
+        <option value="1h">1 Hour</option>
+        <option value="1m">1 Minute</option>
+        <option value="15s">15 Seconds</option>
       </select>
     </div>
 
     <div id="result" class="card" style="display:none;"></div>
+
     <div id="chart-card" class="card" style="display:none;">
       <div id="chart"></div>
       <div id="chart-meta" class="muted" style="margin-top:8px;"></div>
     </div>
+
     <pre id="raw" style="display:none;"></pre>
 
+    <!-- Lightweight Charts -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
     <script>
       const tickerEl = document.getElementById("ticker");
       const btn = document.getElementById("btn");
@@ -55,129 +62,106 @@
       let candleSeries;
       let lastTicker = "";
 
-      function createCandlestickSeries() {
-        if (typeof chart.addCandlestickSeries === "function") {
-          return chart.addCandlestickSeries({
-            upColor: "#26a69a",
-            downColor: "#ef5350",
-            borderVisible: false,
-            wickUpColor: "#26a69a",
-            wickDownColor: "#ef5350",
-          });
-        }
-
-        if (typeof chart.addSeries === "function" && LightweightCharts.CandlestickSeries) {
-          return chart.addSeries(LightweightCharts.CandlestickSeries, {
-            upColor: "#26a69a",
-            downColor: "#ef5350",
-            borderVisible: false,
-            wickUpColor: "#26a69a",
-            wickDownColor: "#ef5350",
-          });
-        }
-
-        throw new Error("Unsupported Lightweight Charts API version");
-      }
-
+      //----- Chart Helpers -----
       function ensureChart() {
         if (!chart) {
           chart = LightweightCharts.createChart(chartEl, {
-            layout: { background: { color: "#ffffff" }, textColor: "#222" },
+            layout: { background: { color: "#ffffff" }, textColor: "#111" },
             grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
             rightPriceScale: { borderColor: "#ddd" },
             timeScale: { borderColor: "#ddd", timeVisible: true, secondsVisible: true },
           });
 
-          const resize = () => {
-            chart.applyOptions({ width: chartEl.clientWidth || 900 });
-          };
+          const resize = () => chart.applyOptions({ width: chartEl.clientWidth });
           window.addEventListener("resize", resize);
           resize();
         }
 
         if (!candleSeries) {
-          candleSeries = createCandlestickSeries();
+          candleSeries = chart.addCandlestickSeries({
+            upColor: "#26a69a",
+            downColor: "#ef5350",
+            borderVisible: false,
+            wickUpColor: "#26a69a",
+            wickDownColor: "#ef5350",
+          });
         }
       }
 
       function fmtPct(x) {
-        return (x * 100).toFixed(2) + "%";
+        const pct = (x * 100).toFixed(2);
+        return (x >= 0 ? "+" : "") + pct + "%";
       }
 
+      //----- Fetch Candle Data -----
       async function loadCandles(ticker) {
         const timeframe = timeframeEl.value;
-        const r = await fetch(
-          `/api/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`
-        );
+        const r = await fetch(`/api/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`);
         const data = await r.json();
 
-        if (!r.ok) {
-          throw new Error(data.error || "Failed to load candle data");
-        }
+        if (!r.ok) throw new Error(data.error || "Failed to load candle data");
 
         ensureChart();
         candleSeries.setData(data.candles);
         chart.timeScale().fitContent();
 
-        const fallbackNote = data.fallbackApplied
-          ? "10 sec is not available from provider; showing 1-minute candles."
-          : "";
-
-        chartMetaEl.textContent = `Showing ${data.timeframe} candles for ~2 years (${new Date(
-          data.from * 1000
-        ).toLocaleDateString()} - ${new Date(data.to * 1000).toLocaleDateString()}). ${fallbackNote}`.trim();
+        chartMetaEl.textContent =
+          `Showing ${data.timeframe} candles for ${data.ticker.toUpperCase()} (${new Date(data.from * 1000).toLocaleDateString()} - ${new Date(data.to * 1000).toLocaleDateString()})`;
         chartCardEl.style.display = "block";
       }
 
-      timeframeEl.addEventListener("change", async () => {
-        if (!lastTicker) return;
-        try {
-          await loadCandles(lastTicker);
-        } catch (e) {
-          chartMetaEl.textContent = `Chart error: ${e.message || e}`;
-        }
-      });
-
+      //----- Main Button Event -----
       btn.addEventListener("click", async () => {
         const t = tickerEl.value.trim().toUpperCase();
+        if (!t) return alert("Please enter a ticker symbol.");
+
         resultEl.style.display = "none";
-        rawEl.style.display = "none";
         chartCardEl.style.display = "none";
+        rawEl.style.display = "none";
         resultEl.innerHTML = "Loading...";
 
-        if (!t) return;
-
         try {
-          const r = await fetch(`/api/check?ticker=${encodeURIComponent(t)}`);
-          const data = await r.json();
+          const res = await fetch(`/api/check?ticker=${encodeURIComponent(t)}`);
+          const data = await res.json();
 
-          if (!r.ok) {
-            resultEl.style.display = "block";
+          if (!res.ok) {
             resultEl.innerHTML = `<strong>Error:</strong> ${data.error || "Unknown error"}`;
+            resultEl.style.display = "block";
             return;
           }
 
           const statusClass = data.meetsRule ? "yes" : "no";
-          const statusText = data.meetsRule ? "YES" : "NO";
+          const statusText = data.meetsRule ? "YES ✅" : "NO ❌";
 
-          resultEl.style.display = "block";
           resultEl.innerHTML = `
-            <div><strong>${data.ticker}</strong> — <span class="${statusClass}">${statusText}</span> (≥ ${(data.threshold * 100).toFixed(0)}%)</div>
+            <h3>${data.ticker}</h3>
+            <div>Status: <span class="${statusClass}">${statusText}</span> (≥ ${(data.threshold * 100).toFixed(0)}%)</div>
             <div>Current: <strong>$${data.current}</strong></div>
             <div>Prev Close: $${data.prevClose}</div>
             <div>% Change: ${fmtPct(data.pctChange)}</div>
             <div>Open: $${data.open} | High: $${data.high} | Low: $${data.low}</div>
             <div>Time: ${data.timestamp || "N/A"}</div>
           `;
+          resultEl.style.display = "block";
 
           lastTicker = data.ticker;
           await loadCandles(lastTicker);
 
-          rawEl.style.display = "block";
           rawEl.textContent = JSON.stringify(data, null, 2);
-        } catch (e) {
+          rawEl.style.display = "block";
+        } catch (err) {
+          resultEl.innerHTML = `<strong>Error:</strong> ${err.message}`;
           resultEl.style.display = "block";
-          resultEl.innerHTML = `<strong>Error:</strong> ${e}`;
+        }
+      });
+
+      //----- Auto-refresh chart when timeframe changes -----
+      timeframeEl.addEventListener("change", async () => {
+        if (!lastTicker) return;
+        try {
+          await loadCandles(lastTicker);
+        } catch (e) {
+          chartMetaEl.textContent = `Chart error: ${e.message || e}`;
         }
       });
     </script>
