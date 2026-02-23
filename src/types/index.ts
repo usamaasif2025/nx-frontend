@@ -24,7 +24,7 @@ export interface StockQuote {
 
 // ─── Candle Types ─────────────────────────────────────────────────────────────
 
-export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D';
+export type Timeframe = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1D' | '1W' | '1M';
 
 export interface Candle {
   time: number; // unix timestamp
@@ -120,6 +120,36 @@ export interface WatchlistItem {
   notes?: string;
   tags: string[];
   pinned: boolean;
+}
+
+// ─── Backtest Types ───────────────────────────────────────────────────────────
+
+export interface BacktestTrade {
+  entryTime: number;
+  exitTime: number;
+  entryPrice: number;
+  exitPrice: number;
+  direction: 'long' | 'short';
+  target: number;
+  stop: number;
+  outcome: 'win' | 'loss' | 'timeout';
+  pnlPercent: number;
+  rr: number;
+  strategy: string;
+}
+
+export interface BacktestResult {
+  symbol: string;
+  timeframe: string;
+  strategy: string;
+  trades: BacktestTrade[];
+  winRate: number;
+  totalPnlPercent: number;
+  avgRR: number;
+  maxDrawdown: number;
+  totalTrades: number;
+  wins: number;
+  losses: number;
 }
 
 // ─── Claude AI Analysis ───────────────────────────────────────────────────────

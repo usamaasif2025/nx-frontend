@@ -24,16 +24,32 @@ export async function GET(req: Request) {
     const session = getSession();
     const results: StockQuote[] = [];
 
-    // Try Polygon gainers first (most reliable free source)
-    const polygonGainers = await polygon.getGainers(minPct);
+    // During pre-market use watchlist scanner (lastTrade vs prevDay),
+    // because the standard gainers endpoint relies on todaysChangePerc which
+    // is zero until the regular session opens.
+    let polygonGainers = session === 'pre'
+      ? await polygon.getPreMarketMovers(minPct)
+      : await polygon.getGainers(minPct);
+
+    // Fallback: if pre-market scanner returned nothing, try regular gainers
+    if (polygonGainers.length === 0) {
+      polygonGainers = await polygon.getGainers(minPct);
+    }
 
     if (polygonGainers.length > 0) {
       for (const snap of polygonGainers.slice(0, 30)) {
         // Enrich with Finnhub for real-time price
         const fq = await getQuote(snap.ticker);
-        const price = fq?.c || snap.lastTrade?.p || snap.day?.c || 0;
+        // Pre-market: prefer lastTrade (extended-hours) over day close
+        const price =
+          (session === 'pre' ? snap.lastTrade?.p : null) ||
+          fq?.c ||
+          snap.lastTrade?.p ||
+          snap.day?.c ||
+          0;
         const prevClose = snap.prevDay?.c || fq?.pc || 0;
-        const changePercent = prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : snap.todaysChangePerc;
+        const changePercent =
+          prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : snap.todaysChangePerc;
 
         if (Math.abs(changePercent) >= minPct) {
           results.push({
@@ -42,8 +58,9 @@ export async function GET(req: Request) {
             price,
             change: price - prevClose,
             changePercent,
-            volume: snap.day?.v || 0,
-            avgVolume: snap.day?.v || 0,
+            // Pre-market: day volume not yet available, use minute bar volume
+            volume: snap.min?.v || snap.day?.v || 0,
+            avgVolume: snap.prevDay?.v || snap.day?.v || 0,
             volumeRatio: 1,
             high: snap.day?.h || price,
             low: snap.day?.l || price,
