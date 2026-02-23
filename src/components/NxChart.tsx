@@ -15,7 +15,7 @@ import {
 } from 'lightweight-charts';
 
 interface Candle {
-  time: number;       // unix seconds
+  time: number;
   open: number;
   high: number;
   low: number;
@@ -30,25 +30,26 @@ interface Props {
   regularEnd: number;
 }
 
+const UP   = '#26a69a';
+const DOWN = '#ef5350';
+const UP_VOL   = '#1a3d38';
+const DOWN_VOL = '#3d1a1a';
+
 export default function NxChart({ candles, regularStart, regularEnd }: Props) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const chartRef       = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+  const firstDataRef   = useRef(true);  // fitContent only on first load
 
+  // ── Create chart once on mount ──────────────────────────────────────────
   useEffect(() => {
-    if (!containerRef.current || candles.length === 0) return;
-
-    // Destroy previous chart if re-rendering with new data
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
+    if (!containerRef.current) return;
 
     const chart = createChart(containerRef.current, {
       layout: {
         background: { type: ColorType.Solid, color: '#000000' },
-        textColor: '#666',
+        textColor: '#555',
         fontSize: 11,
       },
       grid: {
@@ -60,37 +61,31 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
         vertLine: { color: '#333', labelBackgroundColor: '#111' },
         horzLine: { color: '#333', labelBackgroundColor: '#111' },
       },
-      rightPriceScale: {
-        borderColor: '#111',
-        textColor: '#555',
-      },
+      rightPriceScale: { borderColor: '#111' },
       timeScale: {
         borderColor: '#111',
         timeVisible: true,
         secondsVisible: false,
         rightOffset: 5,
       },
-      width: containerRef.current.clientWidth,
+      width:  containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
     });
 
     chartRef.current = chart;
 
-    // Candlestick series
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#00e5ff',
-      downColor: '#ff6b35',
-      borderUpColor: '#00e5ff',
-      borderDownColor: '#ff6b35',
-      wickUpColor: '#00e5ff',
-      wickDownColor: '#ff6b35',
+      upColor:        UP,
+      downColor:      DOWN,
+      borderUpColor:  UP,
+      borderDownColor: DOWN,
+      wickUpColor:    UP,
+      wickDownColor:  DOWN,
     });
     candleSeriesRef.current = candleSeries;
 
-    // Volume series (bottom pane via price scale)
     const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#1a1a1a',
-      priceFormat: { type: 'volume' },
+      priceFormat:  { type: 'volume' },
       priceScaleId: 'volume',
     });
     chart.priceScale('volume').applyOptions({
@@ -99,67 +94,10 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
     });
     volumeSeriesRef.current = volumeSeries;
 
-    // Colour each candle by session
-    const candleData: CandlestickData<Time>[] = candles.map((c) => ({
-      time: c.time as Time,
-      open: c.open,
-      high: c.high,
-      low: c.low,
-      close: c.close,
-      color:
-        c.session === 'pre'
-          ? c.close >= c.open ? '#7c3aed' : '#5b21b6'
-          : c.session === 'post'
-          ? c.close >= c.open ? '#d97706' : '#b45309'
-          : c.close >= c.open ? '#00e5ff' : '#ff6b35',
-      borderColor:
-        c.session === 'pre'
-          ? c.close >= c.open ? '#7c3aed' : '#5b21b6'
-          : c.session === 'post'
-          ? c.close >= c.open ? '#d97706' : '#b45309'
-          : c.close >= c.open ? '#00e5ff' : '#ff6b35',
-      wickColor:
-        c.session === 'pre'
-          ? '#7c3aed'
-          : c.session === 'post'
-          ? '#d97706'
-          : c.close >= c.open ? '#00e5ff' : '#ff6b35',
-    }));
-
-    const volumeData: HistogramData<Time>[] = candles.map((c) => ({
-      time: c.time as Time,
-      value: c.volume,
-      color:
-        c.session === 'pre'
-          ? '#3b1f6a'
-          : c.session === 'post'
-          ? '#44290a'
-          : c.close >= c.open ? '#003d4d' : '#4d1f0a',
-    }));
-
-    candleSeries.setData(candleData);
-    volumeSeries.setData(volumeData);
-
-    // Draw vertical lines at regular session open/close
-    if (regularStart && regularEnd) {
-      // session open line
-      candleSeries.createPriceLine({
-        price: 0,
-        color: 'transparent',
-        lineWidth: 1,
-        lineStyle: 0,
-        axisLabelVisible: false,
-        title: '',
-      });
-    }
-
-    chart.timeScale().fitContent();
-
-    // Responsive resize
     const ro = new ResizeObserver(() => {
       if (containerRef.current) {
         chart.applyOptions({
-          width: containerRef.current.clientWidth,
+          width:  containerRef.current.clientWidth,
           height: containerRef.current.clientHeight,
         });
       }
@@ -169,8 +107,42 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
     return () => {
       ro.disconnect();
       chart.remove();
-      chartRef.current = null;
+      chartRef.current       = null;
+      candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      firstDataRef.current   = true;
     };
+  }, []); // runs once — never recreates the chart
+
+  // ── Update data whenever candles change (silent refresh, no flicker) ───
+  useEffect(() => {
+    if (!candleSeriesRef.current || !volumeSeriesRef.current || candles.length === 0) return;
+
+    const candleData: CandlestickData<Time>[] = candles.map((c) => ({
+      time:        c.time as Time,
+      open:        c.open,
+      high:        c.high,
+      low:         c.low,
+      close:       c.close,
+      color:       c.close >= c.open ? UP   : DOWN,
+      borderColor: c.close >= c.open ? UP   : DOWN,
+      wickColor:   c.close >= c.open ? UP   : DOWN,
+    }));
+
+    const volumeData: HistogramData<Time>[] = candles.map((c) => ({
+      time:  c.time as Time,
+      value: c.volume,
+      color: c.close >= c.open ? UP_VOL : DOWN_VOL,
+    }));
+
+    candleSeriesRef.current.setData(candleData);
+    volumeSeriesRef.current.setData(volumeData);
+
+    // fitContent only on the very first data load — preserve zoom on refresh
+    if (firstDataRef.current) {
+      chartRef.current?.timeScale().fitContent();
+      firstDataRef.current = false;
+    }
   }, [candles, regularStart, regularEnd]);
 
   return <div ref={containerRef} className="w-full h-full" />;
