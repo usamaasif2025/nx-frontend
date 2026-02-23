@@ -3,28 +3,26 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Stock Dashboard - Phase 1</title>
+    <title>Stock Chart Viewer</title>
 
     <style>
       body { font-family: Arial, sans-serif; padding: 20px; background: #fafafa; }
       input, select { padding: 10px; font-size: 16px; }
-      button { padding: 10px 14px; font-size: 16px; cursor: pointer; background: #1976d2; color: white; border: none; border-radius: 4px; }
+      button { padding: 10px 14px; font-size: 16px; cursor: pointer; background: #1e88e5; color: white; border: none; border-radius: 4px; }
       button:hover { background: #1565c0; }
       .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
       .card { margin-top: 16px; padding: 14px; border: 1px solid #ddd; border-radius: 10px; background: #fff; box-shadow: 0 0 8px rgba(0,0,0,0.05); }
-      .yes { color: #0a7a0a; font-weight: bold; }
-      .no { color: #b00020; font-weight: bold; }
       .muted { color: #666; font-size: 13px; }
-      pre { background: #f6f6f6; padding: 10px; border-radius: 8px; overflow: auto; }
-      #chart { width: 100%; height: 420px; }
+      #chart { width: 100%; height: 450px; }
     </style>
   </head>
 
   <body>
-    <h2>📈 Trading Dashboard</h2>
+    <h2>📊 Stock Candlestick Chart Viewer</h2>
+
     <div class="toolbar">
       <input id="ticker" placeholder="Enter ticker symbol (e.g. TSLA)" />
-      <button id="btn">Check</button>
+      <button id="btn">Show Chart</button>
       <label for="timeframe">Timeframe:</label>
       <select id="timeframe">
         <option value="1mo">1 Month</option>
@@ -36,40 +34,33 @@
       </select>
     </div>
 
-    <div id="result" class="card" style="display:none;"></div>
-
     <div id="chart-card" class="card" style="display:none;">
       <div id="chart"></div>
       <div id="chart-meta" class="muted" style="margin-top:8px;"></div>
     </div>
 
-    <pre id="raw" style="display:none;"></pre>
-
-    <!-- Lightweight Charts -->
+    <!-- Lightweight Charts (TradingView library) -->
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-
     <script>
       const tickerEl = document.getElementById("ticker");
       const btn = document.getElementById("btn");
       const timeframeEl = document.getElementById("timeframe");
-      const resultEl = document.getElementById("result");
-      const rawEl = document.getElementById("raw");
+      const chartEl = document.getElementById("chart");
       const chartCardEl = document.getElementById("chart-card");
       const chartMetaEl = document.getElementById("chart-meta");
-      const chartEl = document.getElementById("chart");
 
       let chart;
       let candleSeries;
       let lastTicker = "";
 
-      //----- Chart Helpers -----
+      // Initialize chart structure
       function ensureChart() {
         if (!chart) {
           chart = LightweightCharts.createChart(chartEl, {
-            layout: { background: { color: "#ffffff" }, textColor: "#111" },
-            grid: { vertLines: { color: "#f0f0f0" }, horzLines: { color: "#f0f0f0" } },
-            rightPriceScale: { borderColor: "#ddd" },
-            timeScale: { borderColor: "#ddd", timeVisible: true, secondsVisible: true },
+            layout: { background: { color: "#fff" }, textColor: "#111" },
+            grid: { vertLines: { color: "#f2f2f2" }, horzLines: { color: "#f2f2f2" } },
+            rightPriceScale: { borderColor: "#ccc" },
+            timeScale: { borderColor: "#ccc", timeVisible: true, secondsVisible: true },
           });
 
           const resize = () => chart.applyOptions({ width: chartEl.clientWidth });
@@ -81,19 +72,14 @@
           candleSeries = chart.addCandlestickSeries({
             upColor: "#26a69a",
             downColor: "#ef5350",
-            borderVisible: false,
             wickUpColor: "#26a69a",
             wickDownColor: "#ef5350",
+            borderVisible: false,
           });
         }
       }
 
-      function fmtPct(x) {
-        const pct = (x * 100).toFixed(2);
-        return (x >= 0 ? "+" : "") + pct + "%";
-      }
-
-      //----- Fetch Candle Data -----
+      // Fetch candle data and draw chart
       async function loadCandles(ticker) {
         const timeframe = timeframeEl.value;
         const r = await fetch(`/api/candles?ticker=${encodeURIComponent(ticker)}&timeframe=${encodeURIComponent(timeframe)}`);
@@ -106,62 +92,31 @@
         chart.timeScale().fitContent();
 
         chartMetaEl.textContent =
-          `Showing ${data.timeframe} candles for ${data.ticker.toUpperCase()} (${new Date(data.from * 1000).toLocaleDateString()} - ${new Date(data.to * 1000).toLocaleDateString()})`;
+          `Showing ${data.timeframe.toUpperCase()} candles for ${ticker.toUpperCase()} (${new Date(data.from * 1000).toLocaleDateString()} - ${new Date(data.to * 1000).toLocaleDateString()})`;
         chartCardEl.style.display = "block";
       }
 
-      //----- Main Button Event -----
+      // Event when clicking 'Show Chart'
       btn.addEventListener("click", async () => {
         const t = tickerEl.value.trim().toUpperCase();
         if (!t) return alert("Please enter a ticker symbol.");
 
-        resultEl.style.display = "none";
-        chartCardEl.style.display = "none";
-        rawEl.style.display = "none";
-        resultEl.innerHTML = "Loading...";
-
         try {
-          const res = await fetch(`/api/check?ticker=${encodeURIComponent(t)}`);
-          const data = await res.json();
-
-          if (!res.ok) {
-            resultEl.innerHTML = `<strong>Error:</strong> ${data.error || "Unknown error"}`;
-            resultEl.style.display = "block";
-            return;
-          }
-
-          const statusClass = data.meetsRule ? "yes" : "no";
-          const statusText = data.meetsRule ? "YES ✅" : "NO ❌";
-
-          resultEl.innerHTML = `
-            <h3>${data.ticker}</h3>
-            <div>Status: <span class="${statusClass}">${statusText}</span> (≥ ${(data.threshold * 100).toFixed(0)}%)</div>
-            <div>Current: <strong>$${data.current}</strong></div>
-            <div>Prev Close: $${data.prevClose}</div>
-            <div>% Change: ${fmtPct(data.pctChange)}</div>
-            <div>Open: $${data.open} | High: $${data.high} | Low: $${data.low}</div>
-            <div>Time: ${data.timestamp || "N/A"}</div>
-          `;
-          resultEl.style.display = "block";
-
-          lastTicker = data.ticker;
-          await loadCandles(lastTicker);
-
-          rawEl.textContent = JSON.stringify(data, null, 2);
-          rawEl.style.display = "block";
+          await loadCandles(t);
+          lastTicker = t;
         } catch (err) {
-          resultEl.innerHTML = `<strong>Error:</strong> ${err.message}`;
-          resultEl.style.display = "block";
+          chartMetaEl.textContent = `Error: ${err.message || err}`;
+          chartCardEl.style.display = "block";
         }
       });
 
-      //----- Auto-refresh chart when timeframe changes -----
+      // Auto-refresh chart when timeframe changes
       timeframeEl.addEventListener("change", async () => {
         if (!lastTicker) return;
         try {
           await loadCandles(lastTicker);
-        } catch (e) {
-          chartMetaEl.textContent = `Chart error: ${e.message || e}`;
+        } catch (err) {
+          chartMetaEl.textContent = `Error: ${err.message || err}`;
         }
       });
     </script>
