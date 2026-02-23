@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "monitor": "node scripts/news-monitor.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -30,6 +31,7 @@
     "zustand": "^5.0.11"
   },
   "devDependencies": {
+    "node-cron": "^3.0.3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
