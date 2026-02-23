@@ -51,7 +51,7 @@ export async function getCandles(
 export interface PolygonSnapshot {
   ticker: string;
   day: { o: number; h: number; l: number; c: number; v: number; vw: number };
-  prevDay: { c: number };
+  prevDay: { c: number; v: number };
   min: { o: number; h: number; l: number; c: number; v: number };
   lastTrade: { p: number };
   todaysChangePerc: number;
@@ -65,6 +65,57 @@ export async function getGainers(minChangePct = 7): Promise<PolygonSnapshot[]> {
     return data.tickers.filter(
       (t: PolygonSnapshot) => Math.abs(t.todaysChangePerc) >= minChangePct
     );
+  } catch {
+    return [];
+  }
+}
+
+// Popular/active stocks to scan during pre-market hours
+const PRE_MARKET_WATCHLIST = [
+  // Mega-cap tech
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'AVGO', 'AMD',
+  'NFLX', 'INTC', 'QCOM', 'CRM', 'ORCL', 'ADBE', 'MU', 'AMAT', 'LRCX', 'SMCI',
+  // Leveraged ETFs & volatility
+  'SPY', 'QQQ', 'IWM', 'SOXS', 'SOXL', 'TQQQ', 'SPXL', 'UVXY', 'SQQQ',
+  // Financials
+  'JPM', 'BAC', 'GS', 'MS', 'WFC', 'C', 'V', 'MA', 'PYPL',
+  // Energy
+  'XOM', 'CVX', 'OXY', 'HAL', 'SLB',
+  // Biotech / pharma (frequent pre-market movers on trial data)
+  'MRNA', 'BNTX', 'NVAX', 'BIIB', 'GILD', 'AMGN', 'REGN', 'VRTX', 'SRPT',
+  // Consumer / retail
+  'COST', 'WMT', 'TGT', 'HD', 'SBUX', 'MCD', 'NKE',
+  // High-volatility / meme / retail favourites
+  'PLTR', 'RIVN', 'LCID', 'HOOD', 'SOFI', 'UPST', 'AFRM', 'COIN',
+  'MARA', 'RIOT', 'CLSK', 'HUT', 'GME', 'AMC', 'BB',
+].join(',');
+
+/**
+ * Returns pre-market movers by comparing lastTrade.p (most recent extended-hours
+ * trade) against prevDay.c (previous regular-session close).
+ * Used in place of getGainers() during pre-market (4:00 AM – 9:30 AM ET).
+ */
+export async function getPreMarketMovers(minChangePct = 5): Promise<PolygonSnapshot[]> {
+  try {
+    const { data } = await client.get('/v2/snapshot/locale/us/markets/stocks/tickers', {
+      params: { tickers: PRE_MARKET_WATCHLIST },
+    });
+    if (!data.tickers) return [];
+
+    return (data.tickers as PolygonSnapshot[])
+      .map((t) => {
+        const prePrice = t.lastTrade?.p ?? 0;
+        const prevClose = t.prevDay?.c ?? 0;
+        const changePct =
+          prePrice && prevClose > 0 ? ((prePrice - prevClose) / prevClose) * 100 : 0;
+        return {
+          ...t,
+          todaysChangePerc: changePct,
+          todaysChange: prePrice - prevClose,
+        };
+      })
+      .filter((t) => Math.abs(t.todaysChangePerc) >= minChangePct)
+      .sort((a, b) => Math.abs(b.todaysChangePerc) - Math.abs(a.todaysChangePerc));
   } catch {
     return [];
   }
