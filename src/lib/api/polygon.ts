@@ -14,6 +14,8 @@ const MULTIPLIER_MAP: Record<string, { multiplier: number; timespan: string }> =
   '1h':  { multiplier: 1,   timespan: 'hour' },
   '4h':  { multiplier: 4,   timespan: 'hour' },
   '1D':  { multiplier: 1,   timespan: 'day' },
+  '1W':  { multiplier: 1,   timespan: 'week' },
+  '1M':  { multiplier: 1,   timespan: 'month' },
 };
 
 export async function getCandles(

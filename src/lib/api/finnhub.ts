@@ -40,7 +40,7 @@ export async function getBatchQuotes(symbols: string[]): Promise<Record<string, 
 // ─── Candles ──────────────────────────────────────────────────────────────────
 
 const RESOLUTION_MAP: Record<string, string> = {
-  '1m': '1', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1D': 'D',
+  '1m': '1', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1D': 'D', '1W': 'W', '1M': 'M',
 };
 
 export async function getCandles(
