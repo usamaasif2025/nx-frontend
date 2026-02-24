@@ -100,39 +100,61 @@ function getSession(): Session {
 // ── Mover fetch ───────────────────────────────────────────────────────────────
 
 async function fetchMovers(session: Session, minPct: number, max: number): Promise<Mover[]> {
-  // most_actives surfaces pre-market volume leaders; day_gainers for regular
-  const scrId = session === 'pre' ? 'most_actives' : 'day_gainers';
+  // Pre-market: query BOTH screeners so we don't miss movers with low volume.
+  //   day_gainers  — sorted by % move (movement-first, what we care about)
+  //   most_actives — sorted by volume  (catches any high-volume movers not in day_gainers)
+  // Regular session: day_gainers only.
+  const scrIds = session === 'pre' ? ['day_gainers', 'most_actives'] : ['day_gainers'];
 
-  const res = await axios.get(
-    'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved',
-    { params: { count: 200, scrIds: scrId, start: 0 }, headers: HEADERS, timeout: 12_000 },
+  const fetches = await Promise.allSettled(
+    scrIds.map(scrId =>
+      axios.get(
+        'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved',
+        { params: { count: 200, scrIds: scrId, start: 0 }, headers: HEADERS, timeout: 12_000 },
+      ).then(r => (r.data?.finance?.result?.[0]?.quotes ?? []) as any[]),
+    ),
   );
 
-  const quotes: any[] = res.data?.finance?.result?.[0]?.quotes ?? [];
+  // Merge both lists — deduplicate by symbol, day_gainers entries take priority
+  const seen  = new Set<string>();
+  const quotes: any[] = [];
+  for (const f of fetches) {
+    if (f.status === 'fulfilled') {
+      for (const q of f.value) {
+        if (q.symbol && !seen.has(q.symbol)) {
+          seen.add(q.symbol);
+          quotes.push(q);
+        }
+      }
+    }
+  }
 
+  // Filter by movement, price, and market cap — volume plays no role here
   const filtered = quotes.filter(q => {
     if (session === 'pre') {
       const pct      = q.preMarketChangePercent ?? 0;
       const prePrice = q.preMarketPrice         ?? 0;
       const mcap     = q.marketCap              ?? 0;
-      // Two hurdles must pass:
-      //   1. Big % move in pre-market
-      //   2. Stock price <= $30 (small-cap focus)
-      //   3. Market cap <= $2 B (small-cap focus)
       return pct >= minPct
         && prePrice > 0 && prePrice <= PRE_MAX_PRICE
         && mcap > 0 && mcap <= PRE_MAX_MCAP;
     }
-    // Regular session: straightforward % filter
     return (q.regularMarketChangePercent ?? 0) >= minPct;
   });
+
+  // Sort by biggest mover first
+  filtered.sort((a, b) =>
+    session === 'pre'
+      ? (b.preMarketChangePercent     ?? 0) - (a.preMarketChangePercent     ?? 0)
+      : (b.regularMarketChangePercent ?? 0) - (a.regularMarketChangePercent ?? 0),
+  );
 
   return filtered.slice(0, max).map(q => ({
     symbol:      q.symbol,
     name:        q.shortName ?? q.longName ?? q.symbol,
     price:       session === 'pre'
-                   ? (q.preMarketPrice        ?? 0)
-                   : (q.regularMarketPrice    ?? 0),
+                   ? (q.preMarketPrice            ?? 0)
+                   : (q.regularMarketPrice        ?? 0),
     changePct:   session === 'pre'
                    ? (q.preMarketChangePercent     ?? 0)
                    : (q.regularMarketChangePercent ?? 0),
