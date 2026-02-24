@@ -114,16 +114,13 @@ async function fetchMovers(session: Session, minPct: number, max: number): Promi
     if (session === 'pre') {
       const pct      = q.preMarketChangePercent ?? 0;
       const prePrice = q.preMarketPrice         ?? 0;
-      const prevHigh = q.regularMarketDayHigh   ?? 0;
       const mcap     = q.marketCap              ?? 0;
-      // All four hurdles must pass:
+      // Two hurdles must pass:
       //   1. Big % move in pre-market
-      //   2. Price breaking above yesterday's high
-      //   3. Stock price under $30 (small-cap focus)
-      //   4. Market cap under $2 B (small-cap focus)
+      //   2. Stock price <= $30 (small-cap focus)
+      //   3. Market cap <= $2 B (small-cap focus)
       return pct >= minPct
-        && prevHigh > 0 && prePrice > prevHigh
-        && prePrice > 0 && prePrice < PRE_MAX_PRICE
+        && prePrice > 0 && prePrice <= PRE_MAX_PRICE
         && mcap > 0 && mcap <= PRE_MAX_MCAP;
     }
     // Regular session: straightforward % filter
@@ -167,7 +164,7 @@ export async function GET() {
       checkedAt: new Date().toISOString(),
       session,
       message: session === 'pre'
-        ? `No stocks up >${MOVE_PCT}% AND above D-High AND price <$${PRE_MAX_PRICE} AND mktcap <$${PRE_MAX_MCAP / 1e9}B in pre-market`
+        ? `No stocks up >${MOVE_PCT}% AND price <=$${PRE_MAX_PRICE} AND mktcap <=$${PRE_MAX_MCAP / 1e9}B in pre-market`
         : `No stocks up >${MOVE_PCT}% in regular session`,
       movers: 0, totalSent: 0,
     });
@@ -263,7 +260,7 @@ export async function GET() {
   await Promise.all([writeJson(CACHE_PATH, cache), writeJson(COOLDOWN_PATH, cooldowns)]);
 
   const filterDesc = session === 'pre'
-    ? `>${MOVE_PCT}% | price<$${PRE_MAX_PRICE} | mcap<$${PRE_MAX_MCAP / 1e9}B`
+    ? `>${MOVE_PCT}% | price<=$${PRE_MAX_PRICE} | mcap<=$${PRE_MAX_MCAP / 1e9}B`
     : `>${MOVE_PCT}%`;
   console.log(`[momentum-scanner] ${session} | ${movers.length} movers ${filterDesc} | ${totalSent} sent`);
 

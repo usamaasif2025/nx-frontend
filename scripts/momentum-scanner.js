@@ -127,7 +127,7 @@ console.log(`╚═════════════════════�
 console.log(`  Endpoint   : ${BASE_URL}/api/cron/momentum-scanner`);
 console.log(`  Interval   : every ${CHECK_INTERVAL_SECONDS}s  (MONITOR_INTERVAL_SECONDS)`);
 console.log(`  Threshold  : >${movePct}% move  (PRICE_MOVE_PCT)`);
-console.log(`  Pre-market : price <$${maxPx}  |  mktcap <$${(parseFloat(maxMcap)/1e9).toFixed(0)}B`);
+console.log(`  Pre-market : price <=$${maxPx}  |  mktcap <=$${(parseFloat(maxMcap)/1e9).toFixed(0)}B`);
 console.log(`  Max movers : ${maxMov} per cycle  (MAX_MOVERS)`);
 console.log(`  Cooldown   : ${cooldown}m per ticker  (ALERT_COOLDOWN_MINUTES)`);
 console.log(`  Log        : data/alert-log.jsonl`);
