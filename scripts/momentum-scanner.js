@@ -51,29 +51,34 @@ async function scan() {
     }
 
     const {
-      movers     = 0,
-      results    = [],
-      totalSent  = 0,
-      threshold  = 7,
+      movers      = 0,
+      results     = [],
+      totalSent   = 0,
+      threshold   = 7,
       cooldownMin = 15,
+      session     = '',
       message,
     } = data;
 
-    // Market closed / no movers
+    // Market closed or no movers matching filters
     if (message) {
-      console.log(`[${ts}] 💤 #${checkCount}  ${message}`);
+      const icon = message.includes('closed') ? '💤' : '🔍';
+      console.log(`[${ts}] ${icon} #${checkCount}  [${session}]  ${message}`);
       return;
     }
 
+    const sessionLabel = session === 'pre' ? '🌅 PRE' : session === 'regular' ? '📈 REG' : session;
+
     if (totalSent > 0) {
-      console.log(`\n[${ts}] 🚨 Scan #${checkCount} — ${totalSent} MOMENTUM ALERT(S) SENT!\n`);
+      console.log(`\n[${ts}] 🚨 [${sessionLabel}] Scan #${checkCount} — ${totalSent} ALERT(S) SENT!\n`);
     } else {
-      process.stdout.write(`[${ts}] ✅ #${checkCount}  ${movers} mover(s) >${threshold}%  `);
+      process.stdout.write(`[${ts}] ✅ [${sessionLabel}] #${checkCount}  ${movers} mover(s) >${threshold}%  `);
     }
 
     for (const r of results) {
       const sign  = r.changePct >= 0 ? '+' : '';
-      const parts = [`${r.symbol.padEnd(6)} ${sign}${r.changePct.toFixed(1)}%`];
+      const dh    = r.prevDayHigh > 0 ? `  D-H:$${r.prevDayHigh.toFixed(2)}` : '';
+      const parts = [`${r.symbol.padEnd(6)} ${sign}${r.changePct.toFixed(1)}%${dh}`];
 
       if (r.sent > 0)              parts.push(`🚨 ${r.sent} sent`);
       if (r.catalysts > 0 && r.sent === 0) parts.push(`🔕 ${r.catalysts} catalyst(s) — dedupe/cooldown`);

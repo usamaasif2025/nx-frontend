@@ -69,22 +69,32 @@ function timeAgo(unixSec: number): string {
 // ── Momentum scanner alert (price move + news catalyst) ───────────────────────
 
 export function buildMomentumAlertMessage(
-  symbol:    string,
-  name:      string,
-  changePct: number,
-  item:      NewsItem,
+  symbol:      string,
+  name:        string,
+  price:       number,
+  changePct:   number,
+  item:        NewsItem,
+  session:     'pre' | 'regular' | 'closed',
+  prevDayHigh  = 0,
 ): string {
   const catEmoji  = CATEGORY_EMOJI[item.category];
   const sentEmoji = SENTIMENT_EMOJI[item.sentiment];
   const age       = timeAgo(item.publishedAt);
-  const dir       = changePct >= 0 ? '🟢' : '🔴';
   const sign      = changePct >= 0 ? '+' : '';
 
+  const header = session === 'pre'
+    ? `🌅 <b>PRE-MARKET ALERT</b>`
+    : `🚀 <b>MOMENTUM ALERT</b>`;
+
+  const moveLine = session === 'pre' && prevDayHigh > 0
+    ? `🟢 <b>${sign}${changePct.toFixed(1)}%</b> pre-mkt  ·  $${price.toFixed(2)} above D-High $${prevDayHigh.toFixed(2)}`
+    : `🟢 <b>${sign}${changePct.toFixed(1)}%</b> today`;
+
   return [
-    `🚀 <b>MOMENTUM ALERT</b>`,
+    header,
     ``,
     `🏷 <b>${escapeHtml(symbol)}</b>  ·  ${escapeHtml(name)}`,
-    `${dir} <b>${sign}${changePct.toFixed(1)}%</b> today`,
+    moveLine,
     ``,
     `${catEmoji} <b>${escapeHtml(item.category).toUpperCase()}</b>  ·  ${sentEmoji}`,
     `<b>${escapeHtml(item.title)}</b>`,
