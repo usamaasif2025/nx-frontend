@@ -9,13 +9,15 @@
  *  Pre-market  (4:00 AM – 9:30 AM ET):
  *    • preMarketChangePercent >= PRICE_MOVE_PCT  (default 7 %)
  *    • preMarketPrice > regularMarketDayHigh     (breaking above yesterday's high)
+ *    • preMarketPrice < PRE_MAX_PRICE            (default $30 — small-cap focus)
+ *    • marketCap      <= PRE_MAX_MARKET_CAP      (default $2 B — small-cap focus)
  *
  *  Regular session  (9:30 AM – 4:00 PM ET):
  *    • regularMarketChangePercent >= PRICE_MOVE_PCT
  *
  *  Closed / post-market → skip, return early
  *
- *  3. Skip tickers already in cooldown  (saves 7 news-API calls per ticker)
+ *  3. Skip tickers already in cooldown  (saves 8 news-API calls per ticker)
  *  4. Fetch Tier-1 news for qualifying movers
  *  5. Headline dedupe — skip if already sent
  *  6. Send ONE Telegram alert per ticker per cycle then stop (break)
@@ -34,10 +36,13 @@ const CACHE_PATH    = path.join(DATA_DIR, 'sent-alerts.json');
 const COOLDOWN_PATH = path.join(DATA_DIR, 'cooldowns.json');
 const LOG_PATH      = path.join(DATA_DIR, 'alert-log.jsonl');
 
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const COOLDOWN_MS  = parseInt(process.env.ALERT_COOLDOWN_MINUTES ?? '15', 10) * 60_000;
-const MOVE_PCT     = parseFloat(process.env.PRICE_MOVE_PCT ?? '7');
-const MAX_MOVERS   = parseInt(process.env.MAX_MOVERS ?? '15', 10);
+const CACHE_TTL_MS    = 7 * 24 * 60 * 60 * 1000;
+const COOLDOWN_MS     = parseInt(process.env.ALERT_COOLDOWN_MINUTES  ?? '15',           10) * 60_000;
+const MOVE_PCT        = parseFloat(process.env.PRICE_MOVE_PCT        ?? '7');
+const MAX_MOVERS      = parseInt(process.env.MAX_MOVERS               ?? '15',           10);
+// Pre-market small-cap filters
+const PRE_MAX_PRICE   = parseFloat(process.env.PRE_MAX_PRICE          ?? '30');          // max stock price ($)
+const PRE_MAX_MCAP    = parseFloat(process.env.PRE_MAX_MARKET_CAP     ?? '2000000000'); // max market cap ($)
 
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -54,6 +59,7 @@ interface Mover {
   price:       number;   // pre-market price or regular market price
   changePct:   number;   // % change relative to previous close
   prevDayHigh: number;   // yesterday's regular session high (for pre-market filter)
+  marketCap:   number;   // market capitalisation in USD
 }
 
 interface LogEntry {
@@ -109,8 +115,16 @@ async function fetchMovers(session: Session, minPct: number, max: number): Promi
       const pct      = q.preMarketChangePercent ?? 0;
       const prePrice = q.preMarketPrice         ?? 0;
       const prevHigh = q.regularMarketDayHigh   ?? 0;
-      // Must clear both hurdles: big % move AND price breaking above yesterday's high
-      return pct >= minPct && prevHigh > 0 && prePrice > prevHigh;
+      const mcap     = q.marketCap              ?? 0;
+      // All four hurdles must pass:
+      //   1. Big % move in pre-market
+      //   2. Price breaking above yesterday's high
+      //   3. Stock price under $30 (small-cap focus)
+      //   4. Market cap under $2 B (small-cap focus)
+      return pct >= minPct
+        && prevHigh > 0 && prePrice > prevHigh
+        && prePrice > 0 && prePrice < PRE_MAX_PRICE
+        && mcap > 0 && mcap <= PRE_MAX_MCAP;
     }
     // Regular session: straightforward % filter
     return (q.regularMarketChangePercent ?? 0) >= minPct;
@@ -126,6 +140,7 @@ async function fetchMovers(session: Session, minPct: number, max: number): Promi
                    ? (q.preMarketChangePercent     ?? 0)
                    : (q.regularMarketChangePercent ?? 0),
     prevDayHigh: q.regularMarketDayHigh ?? 0,
+    marketCap:   q.marketCap            ?? 0,
   }));
 }
 
@@ -152,7 +167,7 @@ export async function GET() {
       checkedAt: new Date().toISOString(),
       session,
       message: session === 'pre'
-        ? `No stocks up >${MOVE_PCT}% AND above yesterday's high in pre-market`
+        ? `No stocks up >${MOVE_PCT}% AND above D-High AND price <$${PRE_MAX_PRICE} AND mktcap <$${PRE_MAX_MCAP / 1e9}B in pre-market`
         : `No stocks up >${MOVE_PCT}% in regular session`,
       movers: 0, totalSent: 0,
     });
@@ -169,7 +184,7 @@ export async function GET() {
   ) as Record<string, number>;
 
   const results: {
-    symbol: string; changePct: number; prevDayHigh: number;
+    symbol: string; price: number; changePct: number; prevDayHigh: number; marketCap: number;
     catalysts: number; sent: number;
     skipped_dedupe: number; skipped_cooldown: number;
     error?: string;
@@ -185,7 +200,7 @@ export async function GET() {
       if (now - lastAlerted < COOLDOWN_MS) {
         const remainMin = Math.ceil((COOLDOWN_MS - (now - lastAlerted)) / 60_000);
         console.log(`[momentum-scanner] ${mover.symbol} cooldown ${remainMin}m left — skipping`);
-        results.push({ symbol: mover.symbol, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, catalysts: 0, sent: 0, skipped_dedupe: 0, skipped_cooldown: 1 });
+        results.push({ symbol: mover.symbol, price: mover.price, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, marketCap: mover.marketCap, catalysts: 0, sent: 0, skipped_dedupe: 0, skipped_cooldown: 1 });
         continue;
       }
 
@@ -194,7 +209,7 @@ export async function GET() {
       const pinned = items.filter(i => i.isPinned);
 
       if (pinned.length === 0) {
-        results.push({ symbol: mover.symbol, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, catalysts: 0, sent: 0, skipped_dedupe: 0, skipped_cooldown: 0 });
+        results.push({ symbol: mover.symbol, price: mover.price, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, marketCap: mover.marketCap, catalysts: 0, sent: 0, skipped_dedupe: 0, skipped_cooldown: 0 });
         continue;
       }
 
@@ -237,17 +252,20 @@ export async function GET() {
         break;
       }
 
-      results.push({ symbol: mover.symbol, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, catalysts: pinned.length, sent, skipped_dedupe, skipped_cooldown });
+      results.push({ symbol: mover.symbol, price: mover.price, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, marketCap: mover.marketCap, catalysts: pinned.length, sent, skipped_dedupe, skipped_cooldown });
 
     } catch (err: any) {
       console.error(`[momentum-scanner] ${mover.symbol}:`, err?.message);
-      results.push({ symbol: mover.symbol, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, catalysts: 0, sent, skipped_dedupe, skipped_cooldown, error: err?.message });
+      results.push({ symbol: mover.symbol, price: mover.price, changePct: mover.changePct, prevDayHigh: mover.prevDayHigh, marketCap: mover.marketCap, catalysts: 0, sent, skipped_dedupe, skipped_cooldown, error: err?.message });
     }
   }
 
   await Promise.all([writeJson(CACHE_PATH, cache), writeJson(COOLDOWN_PATH, cooldowns)]);
 
-  console.log(`[momentum-scanner] ${session} | ${movers.length} movers >${MOVE_PCT}% | ${totalSent} sent`);
+  const filterDesc = session === 'pre'
+    ? `>${MOVE_PCT}% | price<$${PRE_MAX_PRICE} | mcap<$${PRE_MAX_MCAP / 1e9}B`
+    : `>${MOVE_PCT}%`;
+  console.log(`[momentum-scanner] ${session} | ${movers.length} movers ${filterDesc} | ${totalSent} sent`);
 
   return NextResponse.json({
     checkedAt: new Date().toISOString(),

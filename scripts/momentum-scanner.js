@@ -35,6 +35,14 @@ const BASE_URL               = process.env.NEXT_PUBLIC_BASE_URL || `http://local
 const CHECK_INTERVAL_SECONDS = parseInt(process.env.MONITOR_INTERVAL_SECONDS || '60', 10);
 const CRON_EXPRESSION        = `*/${CHECK_INTERVAL_SECONDS} * * * * *`;
 
+/** Format market cap: 1500000000 → "$1.5B" */
+function fmtMcap(mc) {
+  if (!mc || mc <= 0) return '';
+  if (mc >= 1e9) return `$${(mc / 1e9).toFixed(1)}B`;
+  if (mc >= 1e6) return `$${(mc / 1e6).toFixed(0)}M`;
+  return `$${mc.toLocaleString()}`;
+}
+
 let checkCount = 0;
 
 async function scan() {
@@ -78,7 +86,9 @@ async function scan() {
     for (const r of results) {
       const sign  = r.changePct >= 0 ? '+' : '';
       const dh    = r.prevDayHigh > 0 ? `  D-H:$${r.prevDayHigh.toFixed(2)}` : '';
-      const parts = [`${r.symbol.padEnd(6)} ${sign}${r.changePct.toFixed(1)}%${dh}`];
+      const px    = r.price      > 0 ? `  $${r.price.toFixed(2)}` : '';
+      const mc    = r.marketCap  > 0 ? `  ${fmtMcap(r.marketCap)}` : '';
+      const parts = [`${r.symbol.padEnd(6)} ${sign}${r.changePct.toFixed(1)}%${px}${mc}${dh}`];
 
       if (r.sent > 0)              parts.push(`🚨 ${r.sent} sent`);
       if (r.catalysts > 0 && r.sent === 0) parts.push(`🔕 ${r.catalysts} catalyst(s) — dedupe/cooldown`);
@@ -105,19 +115,22 @@ async function scan() {
   }
 }
 
-const movePct  = process.env.PRICE_MOVE_PCT ?? '7';
-const maxMov   = process.env.MAX_MOVERS ?? '15';
+const movePct  = process.env.PRICE_MOVE_PCT        ?? '7';
+const maxMov   = process.env.MAX_MOVERS             ?? '15';
 const cooldown = process.env.ALERT_COOLDOWN_MINUTES ?? '15';
+const maxPx    = process.env.PRE_MAX_PRICE          ?? '30';
+const maxMcap  = process.env.PRE_MAX_MARKET_CAP     ?? '2000000000';
 
 console.log(`\n╔══════════════════════════════════════════════╗`);
 console.log(`║       NX-1  Momentum Scanner                 ║`);
 console.log(`╚══════════════════════════════════════════════╝`);
-console.log(`  Endpoint  : ${BASE_URL}/api/cron/momentum-scanner`);
-console.log(`  Interval  : every ${CHECK_INTERVAL_SECONDS}s  (MONITOR_INTERVAL_SECONDS)`);
-console.log(`  Threshold : >${movePct}% move  (PRICE_MOVE_PCT)`);
-console.log(`  Max movers: ${maxMov} per cycle  (MAX_MOVERS)`);
-console.log(`  Cooldown  : ${cooldown}m per ticker  (ALERT_COOLDOWN_MINUTES)`);
-console.log(`  Log       : data/alert-log.jsonl`);
+console.log(`  Endpoint   : ${BASE_URL}/api/cron/momentum-scanner`);
+console.log(`  Interval   : every ${CHECK_INTERVAL_SECONDS}s  (MONITOR_INTERVAL_SECONDS)`);
+console.log(`  Threshold  : >${movePct}% move  (PRICE_MOVE_PCT)`);
+console.log(`  Pre-market : price <$${maxPx}  |  mktcap <$${(parseFloat(maxMcap)/1e9).toFixed(0)}B`);
+console.log(`  Max movers : ${maxMov} per cycle  (MAX_MOVERS)`);
+console.log(`  Cooldown   : ${cooldown}m per ticker  (ALERT_COOLDOWN_MINUTES)`);
+console.log(`  Log        : data/alert-log.jsonl`);
 console.log(`  Press Ctrl+C to stop\n`);
 
 scan();
