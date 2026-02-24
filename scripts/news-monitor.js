@@ -4,69 +4,99 @@
  * Usage:
  *   npm run monitor
  *
- * Every CHECK_INTERVAL_MINUTES it calls /api/cron/news-alerts which:
+ * Every MONITOR_INTERVAL_SECONDS it calls /api/cron/news-alerts which:
  *   1. Reads your watchlist from data/watchlist.json
- *   2. Fetches news for each ticker (Yahoo + Google News)
- *   3. Identifies high-impact catalysts (FDA, M&A, Clinical Trial, etc.)
- *   4. Sends a Telegram alert for any new catalyst found
+ *   2. Fetches news for each ticker (Yahoo JSON/RSS, Google News, SEC EDGAR,
+ *      GlobeNewswire, BusinessWire, Finnhub)
+ *   3. Identifies Tier-1 catalyst items (FDA, M&A, Clinical Trial, etc.)
+ *   4. Applies headline dedupe  — skips articles already sent (7-day cache)
+ *   5. Applies per-ticker cooldown — skips if ticker was alerted recently
+ *   6. Sends Telegram alert for new catalysts
+ *   7. Appends every attempt to data/alert-log.jsonl
  *
- * Tip: add tickers to data/watchlist.json, e.g.:
- *   ["NVDA", "AAPL", "TSLA", "PFE"]
+ * Config (set in .env.local or shell environment):
+ *   MONITOR_INTERVAL_SECONDS=30   — how often to check  (default: 30s)
+ *   ALERT_COOLDOWN_MINUTES=15     — min gap between alerts per ticker (default: 15m)
+ *   APP_URL=http://localhost:3000  — base URL appended to alert messages
  *
- * Telegram setup:
- *   1. Open Telegram → search @BotFather → /newbot → copy token
- *   2. Send any message to your new bot
- *   3. Visit https://api.telegram.org/bot<TOKEN>/getUpdates → copy chat_id
- *   4. Add to .env.local:
- *        TELEGRAM_BOT_TOKEN=123456:ABC...
- *        TELEGRAM_CHAT_ID=987654321
+ * Files:
+ *   data/watchlist.json    — tickers to monitor, e.g. ["NVDA", "AAPL", "TSLA"]
+ *   data/sent-alerts.json  — headline dedupe cache (auto-managed)
+ *   data/cooldowns.json    — per-ticker last-alerted timestamps (auto-managed)
+ *   data/alert-log.jsonl   — full log of every alert attempt (auto-appended)
  */
 
 const cron = require('node-cron');
 
 const PORT                   = process.env.PORT || 3000;
 const BASE_URL               = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-const CHECK_INTERVAL_SECONDS = parseInt(process.env.MONITOR_INTERVAL_SECONDS || '15', 10);
+const CHECK_INTERVAL_SECONDS = parseInt(process.env.MONITOR_INTERVAL_SECONDS || '30', 10);
 const CRON_EXPRESSION        = `*/${CHECK_INTERVAL_SECONDS} * * * * *`; // 6-field: seconds
 
+let checkCount = 0;
+
 async function checkAlerts() {
-  const ts = new Date().toISOString();
+  checkCount++;
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+
   try {
     const res  = await fetch(`${BASE_URL}/api/cron/news-alerts`);
     const data = await res.json();
 
     if (!res.ok) {
-      console.error(`[${ts}] Alert check failed (${res.status}):`, data);
+      console.error(`[${ts}] ❌ Check #${checkCount} failed (HTTP ${res.status}):`, data);
       return;
     }
 
-    const { watchlist = [], results = [], totalSent = 0 } = data;
+    const { watchlist = [], results = [], totalSent = 0, cooldownMin = 15 } = data;
 
     if (watchlist.length === 0) {
-      console.log(`[${ts}] Watchlist is empty. Edit data/watchlist.json to add tickers.`);
+      console.log(`[${ts}] ⚠️  Watchlist empty — add tickers to data/watchlist.json`);
       return;
     }
 
-    const summary = results
-      .map(r => `${r.symbol}: ${r.catalysts} catalyst(s), ${r.sent} alert(s) sent${r.error ? ` [ERR: ${r.error}]` : ''}`)
-      .join(' | ');
+    if (totalSent > 0) {
+      console.log(`\n[${ts}] 🚨 Check #${checkCount} — ${totalSent} NEW ALERT(S) SENT\n`);
+    } else {
+      process.stdout.write(`[${ts}] ✅ #${checkCount}  `);
+    }
 
-    console.log(`[${ts}] Checked ${watchlist.join(', ')} → ${totalSent} new alert(s) | ${summary}`);
+    for (const r of results) {
+      const parts = [`${r.symbol.padEnd(6)}`];
+      if (r.sent > 0)              parts.push(`🚨 ${r.sent} sent`);
+      if (r.skipped_cooldown > 0)  parts.push(`⏳ ${r.skipped_cooldown} cooldown`);
+      if (r.skipped_dedupe > 0)    parts.push(`♻  ${r.skipped_dedupe} dedupe`);
+      if (r.catalysts === 0)       parts.push(`· no catalysts`);
+      if (r.error)                 parts.push(`❌ ${r.error}`);
+
+      if (totalSent > 0) {
+        console.log(`  ${parts.join('  ')}`);
+      } else {
+        process.stdout.write(parts.join(' ') + '  ');
+      }
+    }
+
+    if (totalSent === 0) process.stdout.write(`(cooldown: ${cooldownMin}m)\n`);
+    else console.log('');
+
   } catch (err) {
     if (err.cause?.code === 'ECONNREFUSED') {
-      console.error(`[${ts}] Cannot reach ${BASE_URL} — is "npm run dev" running?`);
+      console.error(`[${ts}] ❌ Cannot reach ${BASE_URL} — is "npm run dev" running?`);
     } else {
-      console.error(`[${ts}] Monitor error:`, err.message);
+      console.error(`[${ts}] ❌ Monitor error:`, err.message);
     }
   }
 }
 
-console.log(`\n🔔 News Monitor started`);
-console.log(`   Endpoint : ${BASE_URL}/api/cron/news-alerts`);
-console.log(`   Schedule : every ${CHECK_INTERVAL_SECONDS} second(s)`);
-console.log(`   Sources  : Yahoo JSON, Yahoo RSS, Google News, SEC EDGAR, GlobeNewswire, BusinessWire, Finnhub`);
-console.log(`   Watchlist: data/watchlist.json`);
-console.log(`   Press Ctrl+C to stop\n`);
+console.log(`\n╔══════════════════════════════════════════╗`);
+console.log(`║         NX-1  News Monitor               ║`);
+console.log(`╚══════════════════════════════════════════╝`);
+console.log(`  Endpoint : ${BASE_URL}/api/cron/news-alerts`);
+console.log(`  Interval : every ${CHECK_INTERVAL_SECONDS}s  (MONITOR_INTERVAL_SECONDS)`);
+console.log(`  Cooldown : ${process.env.ALERT_COOLDOWN_MINUTES ?? 15}m per ticker  (ALERT_COOLDOWN_MINUTES)`);
+console.log(`  Watchlist: data/watchlist.json`);
+console.log(`  Log      : data/alert-log.jsonl`);
+console.log(`  Press Ctrl+C to stop\n`);
 
 // Run immediately on start, then on schedule
 checkAlerts();
