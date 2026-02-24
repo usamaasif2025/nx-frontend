@@ -121,49 +121,52 @@ export function buildCatalystBriefMessage(
   news:     NewsItem[],
   chartUrl: string,
 ): string {
-  const todayStartSec = Math.floor(new Date().setHours(0, 0, 0, 0) / 1000);
-
-  const pinned  = news.filter((n) => n.isPinned);
-  // Prefer today's catalysts; fall back to all-time if none found today
-  const catalysts =
-    pinned.filter((n) => n.publishedAt >= todayStartSec).length > 0
-      ? pinned.filter((n) => n.publishedAt >= todayStartSec)
-      : pinned.slice(0, 5);
-
-  const todayOther = news
-    .filter((n) => !n.isPinned && n.publishedAt >= todayStartSec)
-    .slice(0, 5);
+  // All news is already sorted newest-first from fetchNewsForSymbol
+  const pinned  = news.filter((n) => n.isPinned).slice(0, 4);
+  // Show up to 6 most-recent non-pinned items regardless of date
+  // (market-closed use case: news from last few days is still relevant)
+  const recent  = news.filter((n) => !n.isPinned).slice(0, 6);
 
   const dateStr  = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const priceStr = price > 0 ? `  ·  Last: $${price.toFixed(2)}` : '';
+
+  // Overall sentiment across all items
+  const bullCount = news.filter((n) => n.sentiment === 'bullish').length;
+  const bearCount = news.filter((n) => n.sentiment === 'bearish').length;
+  const sentLabel = bullCount > bearCount ? '🟢 Mostly Bullish'
+    : bearCount > bullCount ? '🔴 Mostly Bearish'
+    : '⚪ Mixed';
 
   const lines: string[] = [
     `📋 <b>CATALYST BRIEF</b>  ·  <b>${escapeHtml(symbol)}</b>`,
     ``,
     `${escapeHtml(name)}${priceStr}`,
-    `📅 ${dateStr}`,
+    `📅 ${dateStr}  ·  ${sentLabel}`,
   ];
 
-  if (catalysts.length > 0) {
-    lines.push(``, `🔥 <b>HIGH-IMPACT CATALYSTS (${catalysts.length})</b>`);
-    catalysts.forEach((item, i) => {
+  if (pinned.length > 0) {
+    lines.push(``, `🔥 <b>HIGH-IMPACT (${pinned.length})</b>`);
+    pinned.forEach((item, i) => {
       lines.push(
         ``,
         `${i + 1}. ${CATEGORY_EMOJI[item.category]} <b>${escapeHtml(item.category).toUpperCase()}</b>  ·  ${SENTIMENT_EMOJI[item.sentiment]}`,
-        `   <b>${escapeHtml(item.title)}</b>`,
-        `   ${escapeHtml(item.publisher)} · ${timeAgo(item.publishedAt)}`,
-        `   <a href="${escapeHtml(item.url)}">Read →</a>`,
+        `<b>${escapeHtml(item.title)}</b>`,
+        `${escapeHtml(item.publisher)} · ${timeAgo(item.publishedAt)}`,
+        `<a href="${escapeHtml(item.url)}">Read →</a>`,
       );
     });
-  } else {
-    lines.push(``, `<i>No high-impact catalysts found today.</i>`);
   }
 
-  if (todayOther.length > 0) {
-    lines.push(``, `📰 <b>OTHER NEWS TODAY</b>`);
-    for (const item of todayOther) {
-      lines.push(`• ${timeAgo(item.publishedAt)} — <a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>`);
+  if (recent.length > 0) {
+    lines.push(``, `📰 <b>LATEST NEWS</b>`);
+    for (const item of recent) {
+      const cat = item.category !== 'General' ? ` [${escapeHtml(item.category)}]` : '';
+      lines.push(`• ${SENTIMENT_EMOJI[item.sentiment].slice(0, 2)} <a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>${cat} — ${timeAgo(item.publishedAt)}`);
     }
+  }
+
+  if (pinned.length === 0 && recent.length === 0) {
+    lines.push(``, `<i>No recent news found. Try again in a few minutes.</i>`);
   }
 
   lines.push(``, `🔗 <a href="${escapeHtml(chartUrl)}">Open 1M Chart →</a>`);
