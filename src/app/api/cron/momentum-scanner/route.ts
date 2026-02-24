@@ -105,7 +105,7 @@ async function fetchMovers(session: Session, minPct: number, max: number): Promi
 
   const res = await axios.get(
     'https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved',
-    { params: { count: 100, scrIds: scrId, start: 0 }, headers: HEADERS, timeout: 12_000 },
+    { params: { count: 200, scrIds: scrId, start: 0 }, headers: HEADERS, timeout: 12_000 },
   );
 
   const quotes: any[] = res.data?.finance?.result?.[0]?.quotes ?? [];

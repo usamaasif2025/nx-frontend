@@ -28,12 +28,9 @@
  *   data/alert-log.jsonl    — full audit log of every attempt
  */
 
-const cron = require('node-cron');
-
 const PORT                   = process.env.PORT || 3000;
 const BASE_URL               = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-const CHECK_INTERVAL_SECONDS = parseInt(process.env.MONITOR_INTERVAL_SECONDS || '60', 10);
-const CRON_EXPRESSION        = `*/${CHECK_INTERVAL_SECONDS} * * * * *`;
+const CHECK_INTERVAL_SECONDS = parseInt(process.env.MONITOR_INTERVAL_SECONDS || '30', 10);
 
 /** Format market cap: 1500000000 → "$1.5B" */
 function fmtMcap(mc) {
@@ -120,12 +117,13 @@ const maxMov   = process.env.MAX_MOVERS             ?? '15';
 const cooldown = process.env.ALERT_COOLDOWN_MINUTES ?? '15';
 const maxPx    = process.env.PRE_MAX_PRICE          ?? '30';
 const maxMcap  = process.env.PRE_MAX_MARKET_CAP     ?? '2000000000';
+const interval = process.env.MONITOR_INTERVAL_SECONDS ?? '30';
 
 console.log(`\n╔══════════════════════════════════════════════╗`);
 console.log(`║       NX-1  Momentum Scanner                 ║`);
 console.log(`╚══════════════════════════════════════════════╝`);
 console.log(`  Endpoint   : ${BASE_URL}/api/cron/momentum-scanner`);
-console.log(`  Interval   : every ${CHECK_INTERVAL_SECONDS}s  (MONITOR_INTERVAL_SECONDS)`);
+console.log(`  Interval   : every ${interval}s  (MONITOR_INTERVAL_SECONDS)`);
 console.log(`  Threshold  : >${movePct}% move  (PRICE_MOVE_PCT)`);
 console.log(`  Pre-market : price <=$${maxPx}  |  mktcap <=$${(parseFloat(maxMcap)/1e9).toFixed(0)}B`);
 console.log(`  Max movers : ${maxMov} per cycle  (MAX_MOVERS)`);
@@ -134,4 +132,4 @@ console.log(`  Log        : data/alert-log.jsonl`);
 console.log(`  Press Ctrl+C to stop\n`);
 
 scan();
-cron.schedule(CRON_EXPRESSION, scan);
+setInterval(scan, CHECK_INTERVAL_SECONDS * 1000);
