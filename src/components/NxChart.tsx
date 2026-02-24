@@ -236,7 +236,7 @@ export default function NxChart({
   }
 
   return (
-    <div className="relative w-full h-full">
+    <div className="absolute inset-0">
 
       {/* OHLC hover bar — top-left, non-interactive so crosshair still works */}
       <div className="absolute top-0 left-0 z-10 flex gap-3 px-2 py-0.5 text-xs font-mono pointer-events-none select-none">
