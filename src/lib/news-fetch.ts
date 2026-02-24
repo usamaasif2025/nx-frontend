@@ -29,7 +29,7 @@ export interface NewsItem {
   publishedAt: number; // unix seconds
   thumbnail: string | null;
   summary: string | null;
-  source: 'json' | 'rss' | 'google';
+  source: 'json' | 'rss' | 'google' | 'edgar' | 'globenewswire' | 'finnhub';
   category: NewsCategory;
   sentiment: NewsSentiment;
   isPinned: boolean;
@@ -250,6 +250,100 @@ async function fetchGoogleNews(symbol: string): Promise<NewsItem[]> {
   return parseRssItems(res.data as string, 'google');
 }
 
+// ── Source 4: SEC EDGAR (8-K filings — direct regulatory events) ──────────────
+
+function parseAtomEntries(xml: string, publisher: string): NewsItem[] {
+  const entryBlocks = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/gi)];
+  return entryBlocks
+    .map((m): NewsItem => {
+      const block      = m[1];
+      const title      = extractTag(block, 'title');
+      const linkMatch  = block.match(/href="([^"]+)"/);
+      const url        = linkMatch?.[1] || extractTag(block, 'id');
+      const updated    = extractTag(block, 'updated') || extractTag(block, 'published');
+      const summary    = extractTag(block, 'summary') || extractTag(block, 'content');
+      const publishedAt = updated ? Math.floor(new Date(updated).getTime() / 1000) : 0;
+      return {
+        id:          url || title,
+        title,
+        url,
+        publisher,
+        publishedAt,
+        thumbnail:   null,
+        summary:     summary || null,
+        source:      'edgar',
+        category:    'General',
+        sentiment:   'neutral',
+        isPinned:    false,
+      };
+    })
+    .filter(n => n.title && n.url);
+}
+
+async function fetchSecEdgar(symbol: string): Promise<NewsItem[]> {
+  const res = await axios.get('https://www.sec.gov/cgi-bin/browse-edgar', {
+    params: {
+      action:  'getcompany',
+      CIK:     symbol,
+      type:    '8-K',
+      dateb:   '',
+      owner:   'include',
+      count:   10,
+      output:  'atom',
+    },
+    headers: { ...HEADERS, Accept: 'application/atom+xml, text/xml' },
+    timeout: 8_000,
+    responseType: 'text',
+  });
+  return parseAtomEntries(res.data as string, 'SEC EDGAR');
+}
+
+// ── Source 5: GlobeNewswire (direct press releases) ───────────────────────────
+
+async function fetchGlobeNewswire(symbol: string): Promise<NewsItem[]> {
+  const res = await axios.get(`https://www.globenewswire.com/RssFeed/company/${symbol}`, {
+    headers: { ...HEADERS, Accept: 'application/rss+xml, text/xml' },
+    timeout: 8_000,
+    responseType: 'text',
+  });
+  const items = parseRssItems(res.data as string, 'rss');
+  return items.map(i => ({ ...i, source: 'globenewswire' as const, publisher: i.publisher || 'GlobeNewswire' }));
+}
+
+// ── Source 6: Finnhub (fast aggregated news) ──────────────────────────────────
+
+async function fetchFinnhub(symbol: string): Promise<NewsItem[]> {
+  const key = process.env.FINNHUB_KEY;
+  if (!key || key === 'your_finnhub_api_key_here') return [];
+
+  const to   = new Date();
+  const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const fmt  = (d: Date) => d.toISOString().slice(0, 10);
+
+  const res = await axios.get('https://finnhub.io/api/v1/company-news', {
+    params: { symbol, from: fmt(from), to: fmt(to), token: key },
+    headers: HEADERS,
+    timeout: 8_000,
+  });
+
+  const raw: any[] = res.data || [];
+  return raw
+    .map((n: any): NewsItem => ({
+      id:          String(n.id || n.url || n.headline),
+      title:       (n.headline || '').trim(),
+      url:         n.url || '',
+      publisher:   n.source || 'Finnhub',
+      publishedAt: n.datetime || 0,
+      thumbnail:   n.image || null,
+      summary:     n.summary || null,
+      source:      'finnhub',
+      category:    'General',
+      sentiment:   'neutral',
+      isPinned:    false,
+    }))
+    .filter(n => n.title && n.url);
+}
+
 // ── Merge, dedup & enrich ─────────────────────────────────────────────────────
 
 function merge(...arrays: NewsItem[][]): NewsItem[] {
@@ -266,19 +360,25 @@ function merge(...arrays: NewsItem[][]): NewsItem[] {
 
 export async function fetchNewsForSymbol(symbol: string): Promise<{
   items: NewsItem[];
-  sources: { json: number; rss: number; google: number };
+  sources: { json: number; rss: number; google: number; edgar: number; globenewswire: number; finnhub: number };
 }> {
-  const [jsonResult, rssResult, googleResult] = await Promise.allSettled([
+  const [jsonResult, rssResult, googleResult, edgarResult, gnwResult, finnhubResult] = await Promise.allSettled([
     fetchYahooJson(symbol),
     fetchYahooRss(symbol),
     fetchGoogleNews(symbol),
+    fetchSecEdgar(symbol),
+    fetchGlobeNewswire(symbol),
+    fetchFinnhub(symbol),
   ]);
 
-  const jsonItems   = jsonResult.status   === 'fulfilled' ? jsonResult.value   : [];
-  const rssItems    = rssResult.status    === 'fulfilled' ? rssResult.value    : [];
-  const googleItems = googleResult.status === 'fulfilled' ? googleResult.value : [];
+  const jsonItems   = jsonResult.status    === 'fulfilled' ? jsonResult.value    : [];
+  const rssItems    = rssResult.status     === 'fulfilled' ? rssResult.value     : [];
+  const googleItems = googleResult.status  === 'fulfilled' ? googleResult.value  : [];
+  const edgarItems  = edgarResult.status   === 'fulfilled' ? edgarResult.value   : [];
+  const gnwItems    = gnwResult.status     === 'fulfilled' ? gnwResult.value     : [];
+  const finnhubItems = finnhubResult.status === 'fulfilled' ? finnhubResult.value : [];
 
-  const items = merge(jsonItems, rssItems, googleItems).map(item => {
+  const items = merge(jsonItems, rssItems, googleItems, edgarItems, gnwItems, finnhubItems).map(item => {
     const category  = categorize(item.title, item.summary);
     const sentiment = getSentiment(item.title, item.summary);
     return { ...item, category, sentiment, isPinned: HIGH_IMPACT.includes(category) };
@@ -286,6 +386,13 @@ export async function fetchNewsForSymbol(symbol: string): Promise<{
 
   return {
     items,
-    sources: { json: jsonItems.length, rss: rssItems.length, google: googleItems.length },
+    sources: {
+      json:          jsonItems.length,
+      rss:           rssItems.length,
+      google:        googleItems.length,
+      edgar:         edgarItems.length,
+      globenewswire: gnwItems.length,
+      finnhub:       finnhubItems.length,
+    },
   };
 }

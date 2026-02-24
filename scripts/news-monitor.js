@@ -24,10 +24,10 @@
 
 const cron = require('node-cron');
 
-const PORT                  = process.env.PORT || 3000;
-const BASE_URL              = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${PORT}`;
-const CHECK_INTERVAL_MINUTES = parseInt(process.env.MONITOR_INTERVAL_MINUTES || '5', 10);
-const CRON_EXPRESSION        = `*/${CHECK_INTERVAL_MINUTES} * * * *`;
+const PORT                   = process.env.PORT || 3000;
+const BASE_URL               = process.env.NEXT_PUBLIC_BASE_URL || `http://localhost:${PORT}`;
+const CHECK_INTERVAL_SECONDS = parseInt(process.env.MONITOR_INTERVAL_SECONDS || '15', 10);
+const CRON_EXPRESSION        = `*/${CHECK_INTERVAL_SECONDS} * * * * *`; // 6-field: seconds
 
 async function checkAlerts() {
   const ts = new Date().toISOString();
@@ -63,7 +63,8 @@ async function checkAlerts() {
 
 console.log(`\n🔔 News Monitor started`);
 console.log(`   Endpoint : ${BASE_URL}/api/cron/news-alerts`);
-console.log(`   Schedule : every ${CHECK_INTERVAL_MINUTES} minute(s)`);
+console.log(`   Schedule : every ${CHECK_INTERVAL_SECONDS} second(s)`);
+console.log(`   Sources  : Yahoo JSON, Yahoo RSS, Google News, SEC EDGAR, GlobeNewswire, Finnhub`);
 console.log(`   Watchlist: data/watchlist.json`);
 console.log(`   Press Ctrl+C to stop\n`);
 
