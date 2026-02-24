@@ -64,7 +64,7 @@ async function checkAlerts() {
 console.log(`\n🔔 News Monitor started`);
 console.log(`   Endpoint : ${BASE_URL}/api/cron/news-alerts`);
 console.log(`   Schedule : every ${CHECK_INTERVAL_SECONDS} second(s)`);
-console.log(`   Sources  : Yahoo JSON, Yahoo RSS, Google News, SEC EDGAR, GlobeNewswire, Finnhub`);
+console.log(`   Sources  : Yahoo JSON, Yahoo RSS, Google News, SEC EDGAR, GlobeNewswire, BusinessWire, Finnhub`);
 console.log(`   Watchlist: data/watchlist.json`);
 console.log(`   Press Ctrl+C to stop\n`);
 

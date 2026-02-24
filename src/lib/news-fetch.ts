@@ -310,7 +310,20 @@ async function fetchGlobeNewswire(symbol: string): Promise<NewsItem[]> {
   return items.map(i => ({ ...i, source: 'globenewswire' as const, publisher: i.publisher || 'GlobeNewswire' }));
 }
 
-// ── Source 6: Finnhub (fast aggregated news) ──────────────────────────────────
+// ── Source 6: BusinessWire (direct press releases) ────────────────────────────
+
+async function fetchBusinessWire(symbol: string): Promise<NewsItem[]> {
+  const res = await axios.get('https://feed.businesswire.com/rss/home/', {
+    params: { rss: 'G22', ticker: symbol },
+    headers: { ...HEADERS, Accept: 'application/rss+xml, text/xml' },
+    timeout: 8_000,
+    responseType: 'text',
+  });
+  const items = parseRssItems(res.data as string, 'rss');
+  return items.map(i => ({ ...i, source: 'globenewswire' as const, publisher: i.publisher || 'BusinessWire' }));
+}
+
+// ── Source 7: Finnhub (fast aggregated news) ──────────────────────────────────
 
 async function fetchFinnhub(symbol: string): Promise<NewsItem[]> {
   const key = process.env.FINNHUB_KEY;
@@ -360,25 +373,27 @@ function merge(...arrays: NewsItem[][]): NewsItem[] {
 
 export async function fetchNewsForSymbol(symbol: string): Promise<{
   items: NewsItem[];
-  sources: { json: number; rss: number; google: number; edgar: number; globenewswire: number; finnhub: number };
+  sources: { json: number; rss: number; google: number; edgar: number; globenewswire: number; businesswire: number; finnhub: number };
 }> {
-  const [jsonResult, rssResult, googleResult, edgarResult, gnwResult, finnhubResult] = await Promise.allSettled([
+  const [jsonResult, rssResult, googleResult, edgarResult, gnwResult, bwResult, finnhubResult] = await Promise.allSettled([
     fetchYahooJson(symbol),
     fetchYahooRss(symbol),
     fetchGoogleNews(symbol),
     fetchSecEdgar(symbol),
     fetchGlobeNewswire(symbol),
+    fetchBusinessWire(symbol),
     fetchFinnhub(symbol),
   ]);
 
-  const jsonItems   = jsonResult.status    === 'fulfilled' ? jsonResult.value    : [];
-  const rssItems    = rssResult.status     === 'fulfilled' ? rssResult.value     : [];
-  const googleItems = googleResult.status  === 'fulfilled' ? googleResult.value  : [];
-  const edgarItems  = edgarResult.status   === 'fulfilled' ? edgarResult.value   : [];
-  const gnwItems    = gnwResult.status     === 'fulfilled' ? gnwResult.value     : [];
-  const finnhubItems = finnhubResult.status === 'fulfilled' ? finnhubResult.value : [];
+  const jsonItems     = jsonResult.status     === 'fulfilled' ? jsonResult.value     : [];
+  const rssItems      = rssResult.status      === 'fulfilled' ? rssResult.value      : [];
+  const googleItems   = googleResult.status   === 'fulfilled' ? googleResult.value   : [];
+  const edgarItems    = edgarResult.status    === 'fulfilled' ? edgarResult.value    : [];
+  const gnwItems      = gnwResult.status      === 'fulfilled' ? gnwResult.value      : [];
+  const bwItems       = bwResult.status       === 'fulfilled' ? bwResult.value       : [];
+  const finnhubItems  = finnhubResult.status  === 'fulfilled' ? finnhubResult.value  : [];
 
-  const items = merge(jsonItems, rssItems, googleItems, edgarItems, gnwItems, finnhubItems).map(item => {
+  const items = merge(jsonItems, rssItems, googleItems, edgarItems, gnwItems, bwItems, finnhubItems).map(item => {
     const category  = categorize(item.title, item.summary);
     const sentiment = getSentiment(item.title, item.summary);
     return { ...item, category, sentiment, isPinned: HIGH_IMPACT.includes(category) };
@@ -392,6 +407,7 @@ export async function fetchNewsForSymbol(symbol: string): Promise<{
       google:        googleItems.length,
       edgar:         edgarItems.length,
       globenewswire: gnwItems.length,
+      businesswire:  bwItems.length,
       finnhub:       finnhubItems.length,
     },
   };
