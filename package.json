@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "monitor": "node scripts/news-monitor.js"
+    "monitor": "node scripts/news-monitor.js",
+    "scanner": "node scripts/momentum-scanner.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

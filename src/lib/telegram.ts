@@ -66,6 +66,36 @@ function timeAgo(unixSec: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
+// ── Momentum scanner alert (price move + news catalyst) ───────────────────────
+
+export function buildMomentumAlertMessage(
+  symbol:    string,
+  name:      string,
+  changePct: number,
+  item:      NewsItem,
+): string {
+  const catEmoji  = CATEGORY_EMOJI[item.category];
+  const sentEmoji = SENTIMENT_EMOJI[item.sentiment];
+  const age       = timeAgo(item.publishedAt);
+  const dir       = changePct >= 0 ? '🟢' : '🔴';
+  const sign      = changePct >= 0 ? '+' : '';
+
+  return [
+    `🚀 <b>MOMENTUM ALERT</b>`,
+    ``,
+    `🏷 <b>${escapeHtml(symbol)}</b>  ·  ${escapeHtml(name)}`,
+    `${dir} <b>${sign}${changePct.toFixed(1)}%</b> today`,
+    ``,
+    `${catEmoji} <b>${escapeHtml(item.category).toUpperCase()}</b>  ·  ${sentEmoji}`,
+    `<b>${escapeHtml(item.title)}</b>`,
+    ``,
+    `📰 ${escapeHtml(item.publisher)} · ${age}`,
+    `<a href="${escapeUrl(item.url)}">Read Article →</a>`,
+  ].join('\n');
+}
+
+// ── Watchlist catalyst alert ───────────────────────────────────────────────────
+
 export function buildAlertMessage(item: NewsItem, symbol: string): string {
   const catEmoji  = CATEGORY_EMOJI[item.category];
   const sentEmoji = SENTIMENT_EMOJI[item.sentiment];
