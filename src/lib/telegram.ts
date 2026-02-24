@@ -23,7 +23,7 @@ const SENTIMENT_EMOJI: Record<NewsSentiment, string> = {
   neutral: '⚪ Neutral',
 };
 
-// Telegram HTML mode only supports &amp; &lt; &gt; — &quot; will cause a 400 reject
+// Telegram HTML mode only supports &amp; &lt; &gt; in text content
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -31,15 +31,31 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-// For href attributes: also percent-encode " so it can't break the attribute
+// For href attributes: percent-encode chars that can break the HTML attribute.
+// Use %3C/%3E instead of &lt;/&gt; so Telegram's non-standard parser can't
+// misinterpret them as tag boundaries inside the href value.
 function escapeUrl(url: string): string {
-  return escapeHtml(url).replace(/"/g, '%22');
+  return url
+    .replace(/&/g, '&amp;') // & must be &amp; per HTML spec in href
+    .replace(/"/g, '%22')   // " would close the attribute
+    .replace(/</g, '%3C')   // < percent-encode, not &lt;
+    .replace(/>/g, '%3E');  // > percent-encode, not &gt;
 }
 
-// Guard against Telegram's 4096-char message limit
-function truncate(text: string, max = 4000): string {
-  if (text.length <= max) return text;
-  return text.slice(0, max) + '\n…';
+// Truncate at a line boundary so we never cut inside an HTML tag.
+function truncateLines(lines: string[], max = 4000): string {
+  const full = lines.join('\n');
+  if (full.length <= max) return full;
+  const ellipsis = '\n…';
+  let length = 0;
+  let kept = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const add = (i === 0 ? 0 : 1) + lines[i].length;
+    if (length + add + ellipsis.length > max) break;
+    length += add;
+    kept = i + 1;
+  }
+  return lines.slice(0, kept).join('\n') + ellipsis;
 }
 
 function timeAgo(unixSec: number): string {
@@ -114,7 +130,7 @@ export function buildChartOpenMessage(
   }
 
   lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open ${tf.toUpperCase()} Chart →</a>`);
-  return truncate(lines.join('\n'));
+  return truncateLines(lines);
 }
 
 // ── Catalyst brief (manual) ───────────────────────────────────────────────────
@@ -175,7 +191,7 @@ export function buildCatalystBriefMessage(
   }
 
   lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open 1M Chart →</a>`);
-  return truncate(lines.join('\n'));
+  return truncateLines(lines);
 }
 
 // ── Shared send helper ────────────────────────────────────────────────────────
