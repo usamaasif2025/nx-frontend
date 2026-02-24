@@ -29,7 +29,7 @@ export interface NewsItem {
   publishedAt: number; // unix seconds
   thumbnail: string | null;
   summary: string | null;
-  source: 'json' | 'rss' | 'google' | 'edgar' | 'globenewswire' | 'finnhub';
+  source: 'json' | 'rss' | 'google' | 'edgar' | 'globenewswire' | 'finnhub' | 'stocktwits';
   category: NewsCategory;
   sentiment: NewsSentiment;
   isPinned: boolean;
@@ -357,6 +357,51 @@ async function fetchFinnhub(symbol: string): Promise<NewsItem[]> {
     .filter(n => n.title && n.url);
 }
 
+// ── Source 8: StockTwits (social sentiment — early signals) ───────────────────
+
+async function fetchStockTwits(symbol: string): Promise<NewsItem[]> {
+  const res = await axios.get(
+    `https://api.stocktwits.com/api/2/streams/symbol/${encodeURIComponent(symbol)}.json`,
+    { headers: HEADERS, timeout: 8_000 },
+  );
+
+  const messages: any[] = res.data?.messages ?? [];
+
+  return messages
+    .filter((m: any) => {
+      const hasSentiment = !!m.entities?.sentiment?.basic;
+      const likes        = m.likes?.total ?? 0;
+      const followers    = m.user?.followers ?? 0;
+      // Keep messages with explicit sentiment tag, notable engagement, or influential users
+      return hasSentiment || likes >= 3 || followers >= 1_000;
+    })
+    .slice(0, 15)
+    .map((m: any): NewsItem => {
+      const basic = m.entities?.sentiment?.basic as string | undefined;
+      const stSentiment: NewsSentiment =
+        basic === 'Bullish' ? 'bullish' :
+        basic === 'Bearish' ? 'bearish' : 'neutral';
+
+      const body  = (m.body ?? '').trim();
+      const title = body.length > 200 ? body.slice(0, 197) + '…' : body;
+
+      return {
+        id:          `stocktwits_${m.id}`,
+        title,
+        url:         `https://stocktwits.com/message/${m.id}`,
+        publisher:   `@${m.user?.username ?? 'StockTwits'}`,
+        publishedAt: m.created_at ? Math.floor(new Date(m.created_at).getTime() / 1000) : 0,
+        thumbnail:   null,
+        summary:     null,
+        source:      'stocktwits',
+        category:    'General',
+        sentiment:   stSentiment,
+        isPinned:    false,
+      };
+    })
+    .filter(n => n.title);
+}
+
 // ── Merge, dedup & enrich ─────────────────────────────────────────────────────
 
 function merge(...arrays: NewsItem[][]): NewsItem[] {
@@ -373,9 +418,9 @@ function merge(...arrays: NewsItem[][]): NewsItem[] {
 
 export async function fetchNewsForSymbol(symbol: string): Promise<{
   items: NewsItem[];
-  sources: { json: number; rss: number; google: number; edgar: number; globenewswire: number; businesswire: number; finnhub: number };
+  sources: { json: number; rss: number; google: number; edgar: number; globenewswire: number; businesswire: number; finnhub: number; stocktwits: number };
 }> {
-  const [jsonResult, rssResult, googleResult, edgarResult, gnwResult, bwResult, finnhubResult] = await Promise.allSettled([
+  const [jsonResult, rssResult, googleResult, edgarResult, gnwResult, bwResult, finnhubResult, stResult] = await Promise.allSettled([
     fetchYahooJson(symbol),
     fetchYahooRss(symbol),
     fetchGoogleNews(symbol),
@@ -383,6 +428,7 @@ export async function fetchNewsForSymbol(symbol: string): Promise<{
     fetchGlobeNewswire(symbol),
     fetchBusinessWire(symbol),
     fetchFinnhub(symbol),
+    fetchStockTwits(symbol),
   ]);
 
   const jsonItems     = jsonResult.status     === 'fulfilled' ? jsonResult.value     : [];
@@ -392,10 +438,14 @@ export async function fetchNewsForSymbol(symbol: string): Promise<{
   const gnwItems      = gnwResult.status      === 'fulfilled' ? gnwResult.value      : [];
   const bwItems       = bwResult.status       === 'fulfilled' ? bwResult.value       : [];
   const finnhubItems  = finnhubResult.status  === 'fulfilled' ? finnhubResult.value  : [];
+  const stItems       = stResult.status       === 'fulfilled' ? stResult.value       : [];
 
-  const items = merge(jsonItems, rssItems, googleItems, edgarItems, gnwItems, bwItems, finnhubItems).map(item => {
+  const items = merge(jsonItems, rssItems, googleItems, edgarItems, gnwItems, bwItems, finnhubItems, stItems).map(item => {
     const category  = categorize(item.title, item.summary);
-    const sentiment = getSentiment(item.title, item.summary);
+    // Preserve StockTwits user-tagged sentiment (explicit bullish/bearish signal)
+    const sentiment = item.source === 'stocktwits' && item.sentiment !== 'neutral'
+      ? item.sentiment
+      : getSentiment(item.title, item.summary);
     return { ...item, category, sentiment, isPinned: HIGH_IMPACT.includes(category) };
   });
 
@@ -409,6 +459,7 @@ export async function fetchNewsForSymbol(symbol: string): Promise<{
       globenewswire: gnwItems.length,
       businesswire:  bwItems.length,
       finnhub:       finnhubItems.length,
+      stocktwits:    stItems.length,
     },
   };
 }
