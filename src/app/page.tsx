@@ -193,8 +193,9 @@ export default function Home() {
       } else {
         throw new Error(res.data?.error || 'Unknown error');
       }
-    } catch (err) {
-      console.error('[brief]', err);
+    } catch (err: any) {
+      const detail = err?.response?.data?.error || err?.message || String(err);
+      console.error('[brief] ERROR:', detail);
       setBriefError(true);
       setTimeout(() => setBriefError(false), 4000);
     } finally {

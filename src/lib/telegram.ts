@@ -31,6 +31,11 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
+// For href attributes: also percent-encode " so it can't break the attribute
+function escapeUrl(url: string): string {
+  return escapeHtml(url).replace(/"/g, '%22');
+}
+
 // Guard against Telegram's 4096-char message limit
 function truncate(text: string, max = 4000): string {
   if (text.length <= max) return text;
@@ -59,7 +64,7 @@ export function buildAlertMessage(item: NewsItem, symbol: string): string {
     `<b>${escapeHtml(item.title)}</b>`,
     ``,
     `📰 ${escapeHtml(item.publisher)} · ${age}`,
-    `<a href="${escapeHtml(item.url)}">Read Article →</a>`,
+    `<a href="${escapeUrl(item.url)}">Read Article →</a>`,
   ].join('\n');
 }
 
@@ -96,7 +101,7 @@ export function buildChartOpenMessage(
         `${CATEGORY_EMOJI[item.category]} <b>${escapeHtml(item.category).toUpperCase()}</b>  ·  ${SENTIMENT_EMOJI[item.sentiment]}`,
         `<b>${escapeHtml(item.title)}</b>`,
         `${escapeHtml(item.publisher)} · ${timeAgo(item.publishedAt)}`,
-        `<a href="${escapeHtml(item.url)}">Read →</a>`,
+        `<a href="${escapeUrl(item.url)}">Read →</a>`,
       );
     }
   }
@@ -104,11 +109,11 @@ export function buildChartOpenMessage(
   if (others.length > 0) {
     lines.push(``, `<b>── Latest News ───────────────────</b>`);
     for (const item of others) {
-      lines.push(`• <a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>`);
+      lines.push(`• <a href="${escapeUrl(item.url)}">${escapeHtml(item.title)}</a>`);
     }
   }
 
-  lines.push(``, `🔗 <a href="${escapeHtml(chartUrl)}">Open ${tf.toUpperCase()} Chart →</a>`);
+  lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open ${tf.toUpperCase()} Chart →</a>`);
   return truncate(lines.join('\n'));
 }
 
@@ -152,7 +157,7 @@ export function buildCatalystBriefMessage(
         `${i + 1}. ${CATEGORY_EMOJI[item.category]} <b>${escapeHtml(item.category).toUpperCase()}</b>  ·  ${SENTIMENT_EMOJI[item.sentiment]}`,
         `<b>${escapeHtml(item.title)}</b>`,
         `${escapeHtml(item.publisher)} · ${timeAgo(item.publishedAt)}`,
-        `<a href="${escapeHtml(item.url)}">Read →</a>`,
+        `<a href="${escapeUrl(item.url)}">Read →</a>`,
       );
     });
   }
@@ -161,7 +166,7 @@ export function buildCatalystBriefMessage(
     lines.push(``, `📰 <b>LATEST NEWS</b>`);
     for (const item of recent) {
       const cat = item.category !== 'General' ? ` [${escapeHtml(item.category)}]` : '';
-      lines.push(`• ${SENTIMENT_EMOJI[item.sentiment].slice(0, 2)} <a href="${escapeHtml(item.url)}">${escapeHtml(item.title)}</a>${cat} — ${timeAgo(item.publishedAt)}`);
+      lines.push(`• ${SENTIMENT_EMOJI[item.sentiment].slice(0, 2)} <a href="${escapeUrl(item.url)}">${escapeHtml(item.title)}</a>${cat} — ${timeAgo(item.publishedAt)}`);
     }
   }
 
@@ -169,7 +174,7 @@ export function buildCatalystBriefMessage(
     lines.push(``, `<i>No recent news found. Try again in a few minutes.</i>`);
   }
 
-  lines.push(``, `🔗 <a href="${escapeHtml(chartUrl)}">Open 1M Chart →</a>`);
+  lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open 1M Chart →</a>`);
   return truncate(lines.join('\n'));
 }
 
@@ -190,6 +195,7 @@ export async function sendTelegram(text: string): Promise<void> {
       parse_mode:               'HTML',
       disable_web_page_preview: true,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     const err = await res.text();
