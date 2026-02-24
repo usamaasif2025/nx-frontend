@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createChart,
   CandlestickSeries,
@@ -40,10 +40,14 @@ interface Props {
   lastMonthHigh?: number;
 }
 
-const UP   = '#26a69a';
-const DOWN = '#ef5350';
+interface Ohlc { open: number; high: number; low: number; close: number }
+
+const UP       = '#26a69a';
+const DOWN     = '#ef5350';
 const UP_VOL   = '#1a3d38';
 const DOWN_VOL = '#3d1a1a';
+
+const ZOOM_FACTOR = 0.65; // zoom in shrinks span by this; zoom out expands by 1/this
 
 export default function NxChart({
   candles, regularStart, regularEnd,
@@ -61,6 +65,8 @@ export default function NxChart({
   const weekHighLineRef = useRef<IPriceLine | null>(null);
   const monHighLineRef  = useRef<IPriceLine | null>(null);
   const firstDataRef    = useRef(true);
+
+  const [ohlc, setOhlc] = useState<Ohlc | null>(null);
 
   // ── Create chart once on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -95,12 +101,12 @@ export default function NxChart({
     chartRef.current = chart;
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor:        UP,
-      downColor:      DOWN,
-      borderUpColor:  UP,
+      upColor:         UP,
+      downColor:       DOWN,
+      borderUpColor:   UP,
       borderDownColor: DOWN,
-      wickUpColor:    UP,
-      wickDownColor:  DOWN,
+      wickUpColor:     UP,
+      wickDownColor:   DOWN,
     });
     candleSeriesRef.current = candleSeries;
 
@@ -113,6 +119,17 @@ export default function NxChart({
       borderVisible: false,
     });
     volumeSeriesRef.current = volumeSeries;
+
+    // ── OHLC crosshair subscription ───────────────────────────────────────
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time || !candleSeriesRef.current) { setOhlc(null); return; }
+      const data = param.seriesData.get(candleSeriesRef.current) as CandlestickData<Time> | undefined;
+      if (data && 'open' in data) {
+        setOhlc({ open: data.open, high: data.high, low: data.low, close: data.close });
+      } else {
+        setOhlc(null);
+      }
+    });
 
     const ro = new ResizeObserver(() => {
       if (containerRef.current) {
@@ -207,5 +224,52 @@ export default function NxChart({
 
   }, [closePrice, preMarketPrice, postMarketPrice, lastDayHigh, lastWeekHigh, lastMonthHigh]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  // ── Zoom helpers ───────────────────────────────────────────────────────
+  function zoom(factor: number) {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const center = (range.from + range.to) / 2;
+    const half   = ((range.to - range.from) * factor) / 2;
+    chart.timeScale().setVisibleLogicalRange({ from: center - half, to: center + half });
+  }
+
+  return (
+    <div className="relative w-full h-full">
+
+      {/* OHLC hover bar — top-left, non-interactive so crosshair still works */}
+      <div className="absolute top-0 left-0 z-10 flex gap-3 px-2 py-0.5 text-xs font-mono pointer-events-none select-none">
+        {ohlc ? (
+          <>
+            <span><span className="text-zinc-500">O </span><span className="text-zinc-200">{ohlc.open.toFixed(2)}</span></span>
+            <span><span className="text-zinc-500">H </span><span className="text-[#26a69a]">{ohlc.high.toFixed(2)}</span></span>
+            <span><span className="text-zinc-500">L </span><span className="text-[#ef5350]">{ohlc.low.toFixed(2)}</span></span>
+            <span>
+              <span className="text-zinc-500">C </span>
+              <span style={{ color: ohlc.close >= ohlc.open ? UP : DOWN }}>{ohlc.close.toFixed(2)}</span>
+            </span>
+          </>
+        ) : (
+          <span className="text-zinc-600">O — &nbsp; H — &nbsp; L — &nbsp; C —</span>
+        )}
+      </div>
+
+      {/* Zoom buttons — bottom-right, above time scale */}
+      <div className="absolute bottom-8 right-16 z-10 flex gap-px">
+        <button
+          onClick={() => zoom(ZOOM_FACTOR)}
+          className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white bg-black hover:bg-zinc-900 border border-zinc-800 text-base leading-none rounded-sm transition-colors"
+          title="Zoom in"
+        >+</button>
+        <button
+          onClick={() => zoom(1 / ZOOM_FACTOR)}
+          className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white bg-black hover:bg-zinc-900 border border-zinc-800 text-base leading-none rounded-sm transition-colors"
+          title="Zoom out"
+        >−</button>
+      </div>
+
+      <div ref={containerRef} className="w-full h-full" />
+    </div>
+  );
 }
