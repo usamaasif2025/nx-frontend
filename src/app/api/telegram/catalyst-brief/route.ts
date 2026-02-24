@@ -37,8 +37,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const text = buildCatalystBriefMessage(symbol, name, price, items, chartUrl ?? '');
-    await sendTelegram(text);
+    const text = buildCatalystBriefMessage(symbol, name, price, items);
+    await sendTelegram(text, chartUrl || undefined);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[catalyst-brief]', e);

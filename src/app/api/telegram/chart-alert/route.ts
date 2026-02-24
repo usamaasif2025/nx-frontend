@@ -20,10 +20,9 @@ export async function POST(req: Request) {
       pct    ?? 0,
       tf     ?? '1m',
       items,
-      chartUrl ?? '',
     );
 
-    await sendTelegram(text);
+    await sendTelegram(text, chartUrl || undefined);
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error('[chart-alert]', e);

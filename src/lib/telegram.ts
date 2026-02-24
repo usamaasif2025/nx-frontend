@@ -66,13 +66,10 @@ function timeAgo(unixSec: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function buildAlertMessage(item: NewsItem, symbol: string, appUrl = ''): string {
+export function buildAlertMessage(item: NewsItem, symbol: string): string {
   const catEmoji  = CATEGORY_EMOJI[item.category];
   const sentEmoji = SENTIMENT_EMOJI[item.sentiment];
   const age       = timeAgo(item.publishedAt);
-  const chartLink = appUrl
-    ? `\n🔗 <a href="${escapeUrl(`${appUrl}/?symbol=${symbol}&tf=1m`)}">Open 1M Chart →</a>`
-    : '';
 
   return [
     `⚡ <b>CATALYST ALERT</b>`,
@@ -83,7 +80,7 @@ export function buildAlertMessage(item: NewsItem, symbol: string, appUrl = ''): 
     `<b>${escapeHtml(item.title)}</b>`,
     ``,
     `📰 ${escapeHtml(item.publisher)} · ${age}`,
-    `<a href="${escapeUrl(item.url)}">Read Article →</a>${chartLink}`,
+    `<a href="${escapeUrl(item.url)}">Read Article →</a>`,
   ].join('\n');
 }
 
@@ -97,11 +94,10 @@ export function buildChartOpenMessage(
   pct:      number,
   tf:       string,
   news:     NewsItem[],
-  chartUrl: string,
 ): string {
-  const isUp     = change >= 0;
-  const dir      = isUp ? '🟢' : '🔴';
-  const sign     = isUp ? '+' : '';
+  const isUp      = change >= 0;
+  const dir       = isUp ? '🟢' : '🔴';
+  const sign      = isUp ? '+' : '';
   const catalysts = news.filter((n) => n.isPinned).slice(0, 3);
   const others    = news.filter((n) => !n.isPinned).slice(0, 5);
 
@@ -132,7 +128,6 @@ export function buildChartOpenMessage(
     }
   }
 
-  lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open 1M Chart →</a>`);
   return truncateLines(lines);
 }
 
@@ -143,18 +138,13 @@ export function buildCatalystBriefMessage(
   name:     string,
   price:    number,
   news:     NewsItem[],
-  chartUrl: string,
 ): string {
-  // All news is already sorted newest-first from fetchNewsForSymbol
   const pinned  = news.filter((n) => n.isPinned).slice(0, 4);
-  // Show up to 6 most-recent non-pinned items regardless of date
-  // (market-closed use case: news from last few days is still relevant)
   const recent  = news.filter((n) => !n.isPinned).slice(0, 6);
 
   const dateStr  = new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const priceStr = price > 0 ? `  ·  Last: $${price.toFixed(2)}` : '';
 
-  // Overall sentiment across all items
   const bullCount = news.filter((n) => n.sentiment === 'bullish').length;
   const bearCount = news.filter((n) => n.sentiment === 'bearish').length;
   const sentLabel = bullCount > bearCount ? '🟢 Mostly Bullish'
@@ -193,28 +183,38 @@ export function buildCatalystBriefMessage(
     lines.push(``, `<i>No recent news found. Try again in a few minutes.</i>`);
   }
 
-  lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open 1M Chart →</a>`);
   return truncateLines(lines);
 }
 
 // ── Shared send helper ────────────────────────────────────────────────────────
+// chartUrl is sent as an inline keyboard button — always tappable in Telegram
+// regardless of whether the URL is localhost or a public domain.
 
-export async function sendTelegram(text: string): Promise<void> {
+export async function sendTelegram(text: string, chartUrl?: string): Promise<void> {
   const token  = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!token || !chatId) {
     throw new Error('TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in .env.local');
   }
+
+  const body: Record<string, unknown> = {
+    chat_id:                  chatId,
+    text,
+    parse_mode:               'HTML',
+    disable_web_page_preview: true,
+  };
+
+  if (chartUrl) {
+    body.reply_markup = {
+      inline_keyboard: [[{ text: '📈  Open 1M Chart', url: chartUrl }]],
+    };
+  }
+
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chat_id:                  chatId,
-      text,
-      parse_mode:               'HTML',
-      disable_web_page_preview: true,
-    }),
-    signal: AbortSignal.timeout(10_000),
+    body:    JSON.stringify(body),
+    signal:  AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     const err = await res.text();
@@ -222,8 +222,9 @@ export async function sendTelegram(text: string): Promise<void> {
   }
 }
 
-// ── Per-item alert (existing cron usage) ─────────────────────────────────────
+// ── Per-item alert (cron usage) ───────────────────────────────────────────────
 
 export async function sendTelegramAlert(item: NewsItem, symbol: string, appUrl = ''): Promise<void> {
-  await sendTelegram(buildAlertMessage(item, symbol, appUrl));
+  const chartUrl = appUrl ? `${appUrl}/?symbol=${symbol}&tf=1m` : undefined;
+  await sendTelegram(buildAlertMessage(item, symbol), chartUrl);
 }
