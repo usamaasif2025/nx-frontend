@@ -23,12 +23,18 @@ const SENTIMENT_EMOJI: Record<NewsSentiment, string> = {
   neutral: '⚪ Neutral',
 };
 
+// Telegram HTML mode only supports &amp; &lt; &gt; — &quot; will cause a 400 reject
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/>/g, '&gt;');
+}
+
+// Guard against Telegram's 4096-char message limit
+function truncate(text: string, max = 4000): string {
+  if (text.length <= max) return text;
+  return text.slice(0, max) + '\n…';
 }
 
 function timeAgo(unixSec: number): string {
@@ -103,7 +109,7 @@ export function buildChartOpenMessage(
   }
 
   lines.push(``, `🔗 <a href="${escapeHtml(chartUrl)}">Open ${tf.toUpperCase()} Chart →</a>`);
-  return lines.join('\n');
+  return truncate(lines.join('\n'));
 }
 
 // ── Catalyst brief (manual) ───────────────────────────────────────────────────
@@ -161,7 +167,7 @@ export function buildCatalystBriefMessage(
   }
 
   lines.push(``, `🔗 <a href="${escapeHtml(chartUrl)}">Open 1M Chart →</a>`);
-  return lines.join('\n');
+  return truncate(lines.join('\n'));
 }
 
 // ── Shared send helper ────────────────────────────────────────────────────────

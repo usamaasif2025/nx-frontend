@@ -62,6 +62,7 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [briefing, setBriefing]     = useState(false);
   const [briefSent, setBriefSent]   = useState(false);
+  const [briefError, setBriefError] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── Shared fetch ─────────────────────────────────────────────────────────
@@ -132,7 +133,8 @@ export default function Home() {
         tf: timeframe,
         chartUrl,
       })
-      .catch(() => { /* silent — never block the UI */ });
+      .then((r) => { if (!r.data?.ok) console.error('[chart-alert] API error:', r.data); })
+      .catch((e) => console.error('[chart-alert] request failed:', e?.response?.data || e?.message));
   }
 
   // ── Form submit ──────────────────────────────────────────────────────────
@@ -177,7 +179,7 @@ export default function Home() {
     const chartUrl = `${window.location.origin}/?symbol=${sym}&tf=1m`;
 
     try {
-      await axios.post('/api/telegram/catalyst-brief', {
+      const res = await axios.post('/api/telegram/catalyst-brief', {
         symbol: sym,
         chartUrl,
         // Pass live price/name from current chart if already loaded for same symbol
@@ -185,10 +187,16 @@ export default function Home() {
           ? { price: data.currentPrice, name: data.name }
           : {}),
       });
-      setBriefSent(true);
-      setTimeout(() => setBriefSent(false), 3000);
-    } catch {
-      /* silently ignore — user can retry */
+      if (res.data?.ok) {
+        setBriefSent(true);
+        setTimeout(() => setBriefSent(false), 3000);
+      } else {
+        throw new Error(res.data?.error || 'Unknown error');
+      }
+    } catch (err) {
+      console.error('[brief]', err);
+      setBriefError(true);
+      setTimeout(() => setBriefError(false), 4000);
     } finally {
       setBriefing(false);
     }
@@ -257,12 +265,14 @@ export default function Home() {
             disabled={briefing || !briefSymbol}
             title="Send today's catalyst news to Telegram"
             className={`px-3 py-1.5 rounded border text-xs font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
-              briefSent
-                ? 'bg-[#26a69a]/20 border-[#26a69a]/40 text-[#26a69a]'
-                : 'bg-[#1a1a2e]/60 border-[#3a3a5c]/40 text-[#7b7bff] hover:bg-[#1a1a2e] hover:border-[#5a5aaf]/60'
+              briefError
+                ? 'bg-[#ef5350]/10 border-[#ef5350]/40 text-[#ef5350]'
+                : briefSent
+                  ? 'bg-[#26a69a]/20 border-[#26a69a]/40 text-[#26a69a]'
+                  : 'bg-[#1a1a2e]/60 border-[#3a3a5c]/40 text-[#7b7bff] hover:bg-[#1a1a2e] hover:border-[#5a5aaf]/60'
             }`}
           >
-            {briefing ? '…' : briefSent ? 'Sent ✓' : 'Brief'}
+            {briefing ? '…' : briefError ? 'Error ✗' : briefSent ? 'Sent ✓' : 'Brief'}
           </button>
         </form>
 
