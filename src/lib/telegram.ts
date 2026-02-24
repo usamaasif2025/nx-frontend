@@ -187,8 +187,9 @@ export function buildCatalystBriefMessage(
 }
 
 // ── Shared send helper ────────────────────────────────────────────────────────
-// chartUrl is sent as an inline keyboard button — always tappable in Telegram
-// regardless of whether the URL is localhost or a public domain.
+// chartUrl is appended as plain text — Telegram Desktop auto-detects and
+// hyperlinks raw URLs (including localhost) in message bodies. Inline keyboard
+// buttons and <a href> tags both reject localhost per Telegram Bot API rules.
 
 export async function sendTelegram(text: string, chartUrl?: string): Promise<void> {
   const token  = process.env.TELEGRAM_BOT_TOKEN;
@@ -197,24 +198,18 @@ export async function sendTelegram(text: string, chartUrl?: string): Promise<voi
     throw new Error('TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set in .env.local');
   }
 
-  const body: Record<string, unknown> = {
-    chat_id:                  chatId,
-    text,
-    parse_mode:               'HTML',
-    disable_web_page_preview: true,
-  };
-
-  if (chartUrl) {
-    body.reply_markup = {
-      inline_keyboard: [[{ text: '📈  Open 1M Chart', url: chartUrl }]],
-    };
-  }
+  const fullText = chartUrl ? `${text}\n\n📈 ${chartUrl}` : text;
 
   const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
-    signal:  AbortSignal.timeout(10_000),
+    body:    JSON.stringify({
+      chat_id:                  chatId,
+      text:                     fullText,
+      parse_mode:               'HTML',
+      disable_web_page_preview: true,
+    }),
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     const err = await res.text();
