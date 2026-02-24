@@ -60,10 +60,16 @@ export default function Home() {
   const [activeTf, setActiveTf]     = useState<TF>('1m');
   const [countdown, setCountdown]   = useState(REFRESH_SEC);
   const [refreshing, setRefreshing] = useState(false);
+  const [briefing, setBriefing]     = useState(false);
+  const [briefSent, setBriefSent]   = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── Shared fetch ─────────────────────────────────────────────────────────
-  const fetchChart = useCallback(async (sym: string, timeframe: TF, silent = false) => {
+  const fetchChart = useCallback(async (
+    sym: string,
+    timeframe: TF,
+    silent = false,
+  ): Promise<ChartData | null> => {
     if (!silent) {
       setLoading(true);
       setError(null);
@@ -72,9 +78,9 @@ export default function Home() {
       setRefreshing(true);
     }
     try {
-      const { data: res } = await axios.get(`/api/chart?symbol=${sym}&tf=${timeframe}`);
+      const { data: res } = await axios.get<ChartData>(`/api/chart?symbol=${sym}&tf=${timeframe}`);
       setData(res);
-      return true;
+      return res;
     } catch (err: unknown) {
       if (!silent) {
         const msg = axios.isAxiosError(err)
@@ -82,23 +88,69 @@ export default function Home() {
           : 'Failed to load chart';
         setError(msg);
       }
-      return false;
+      return null;
     } finally {
       if (!silent) setLoading(false);
       else setRefreshing(false);
     }
   }, []);
 
+  // ── Deep-link: auto-load from URL on first mount ─────────────────────────
+  useEffect(() => {
+    const params   = new URLSearchParams(window.location.search);
+    const sym      = params.get('symbol')?.toUpperCase();
+    const tfParam  = (params.get('tf') as TF) || '1m';
+    if (!sym) return;
+
+    setTicker(sym);
+    setTf(tfParam);
+
+    fetchChart(sym, tfParam).then((res) => {
+      if (res) {
+        setActiveSymbol(sym);
+        setActiveTf(tfParam);
+        setCountdown(REFRESH_SEC);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Fire chart-open Telegram alert (fire-and-forget) ─────────────────────
+  function fireChartAlert(res: ChartData, sym: string, timeframe: TF) {
+    const chartUrl = `${window.location.origin}/?symbol=${sym}&tf=1m`;
+    const change   = res.currentPrice - res.previousClose;
+    const pct      = res.previousClose
+      ? (change / res.previousClose) * 100
+      : 0;
+
+    axios
+      .post('/api/telegram/chart-alert', {
+        symbol: sym,
+        name:   res.name,
+        price:  res.currentPrice,
+        change,
+        pct,
+        tf: timeframe,
+        chartUrl,
+      })
+      .catch(() => { /* silent — never block the UI */ });
+  }
+
   // ── Form submit ──────────────────────────────────────────────────────────
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const sym = ticker.trim().toUpperCase();
     if (!sym) return;
-    const ok = await fetchChart(sym, tf);
-    if (ok) {
+
+    const res = await fetchChart(sym, tf);
+    if (res) {
       setActiveSymbol(sym);
       setActiveTf(tf);
       setCountdown(REFRESH_SEC);
+      // Update URL for deep-linking
+      const params = new URLSearchParams({ symbol: sym, tf });
+      window.history.pushState({}, '', `/?${params}`);
+      // Alert Telegram
+      fireChartAlert(res, sym, tf);
     }
   }
 
@@ -106,10 +158,39 @@ export default function Home() {
   async function handleTfChange(next: TF) {
     setTf(next);
     if (!activeSymbol) return;
-    const ok = await fetchChart(activeSymbol, next);
-    if (ok) {
+    const res = await fetchChart(activeSymbol, next);
+    if (res) {
       setActiveTf(next);
       setCountdown(REFRESH_SEC);
+      // Keep URL in sync with new TF
+      const params = new URLSearchParams({ symbol: activeSymbol, tf: next });
+      window.history.pushState({}, '', `/?${params}`);
+    }
+  }
+
+  // ── Catalyst brief (manual, great for closed market) ────────────────────
+  async function handleBrief() {
+    const sym = ticker.trim().toUpperCase() || activeSymbol;
+    if (!sym) return;
+
+    setBriefing(true);
+    const chartUrl = `${window.location.origin}/?symbol=${sym}&tf=1m`;
+
+    try {
+      await axios.post('/api/telegram/catalyst-brief', {
+        symbol: sym,
+        chartUrl,
+        // Pass live price/name from current chart if already loaded for same symbol
+        ...(data && data.symbol === sym
+          ? { price: data.currentPrice, name: data.name }
+          : {}),
+      });
+      setBriefSent(true);
+      setTimeout(() => setBriefSent(false), 3000);
+    } catch {
+      /* silently ignore — user can retry */
+    } finally {
+      setBriefing(false);
     }
   }
 
@@ -141,6 +222,8 @@ export default function Home() {
   const regularCnt = data?.candles.filter((c) => c.session === 'regular').length ?? 0;
   const postCnt    = data?.candles.filter((c) => c.session === 'post').length    ?? 0;
 
+  const briefSymbol = ticker.trim().toUpperCase() || activeSymbol;
+
   return (
     <div className="flex flex-col h-screen bg-black text-white">
 
@@ -165,6 +248,21 @@ export default function Home() {
             className="px-4 py-1.5 rounded bg-[#26a69a]/10 border border-[#26a69a]/20 text-[#26a69a] text-xs font-bold hover:bg-[#26a69a]/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
           >
             {loading ? 'Loading…' : 'Chart'}
+          </button>
+
+          {/* Catalyst Brief button */}
+          <button
+            type="button"
+            onClick={handleBrief}
+            disabled={briefing || !briefSymbol}
+            title="Send today's catalyst news to Telegram"
+            className={`px-3 py-1.5 rounded border text-xs font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+              briefSent
+                ? 'bg-[#26a69a]/20 border-[#26a69a]/40 text-[#26a69a]'
+                : 'bg-[#1a1a2e]/60 border-[#3a3a5c]/40 text-[#7b7bff] hover:bg-[#1a1a2e] hover:border-[#5a5aaf]/60'
+            }`}
+          >
+            {briefing ? '…' : briefSent ? 'Sent ✓' : 'Brief'}
           </button>
         </form>
 
