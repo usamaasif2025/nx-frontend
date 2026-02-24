@@ -66,10 +66,13 @@ function timeAgo(unixSec: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function buildAlertMessage(item: NewsItem, symbol: string): string {
+export function buildAlertMessage(item: NewsItem, symbol: string, appUrl = ''): string {
   const catEmoji  = CATEGORY_EMOJI[item.category];
   const sentEmoji = SENTIMENT_EMOJI[item.sentiment];
   const age       = timeAgo(item.publishedAt);
+  const chartLink = appUrl
+    ? `\n🔗 <a href="${escapeUrl(`${appUrl}/?symbol=${symbol}&tf=1m`)}">Open 1M Chart →</a>`
+    : '';
 
   return [
     `⚡ <b>CATALYST ALERT</b>`,
@@ -80,7 +83,7 @@ export function buildAlertMessage(item: NewsItem, symbol: string): string {
     `<b>${escapeHtml(item.title)}</b>`,
     ``,
     `📰 ${escapeHtml(item.publisher)} · ${age}`,
-    `<a href="${escapeUrl(item.url)}">Read Article →</a>`,
+    `<a href="${escapeUrl(item.url)}">Read Article →</a>${chartLink}`,
   ].join('\n');
 }
 
@@ -129,7 +132,7 @@ export function buildChartOpenMessage(
     }
   }
 
-  lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open ${tf.toUpperCase()} Chart →</a>`);
+  lines.push(``, `🔗 <a href="${escapeUrl(chartUrl)}">Open 1M Chart →</a>`);
   return truncateLines(lines);
 }
 
@@ -221,6 +224,6 @@ export async function sendTelegram(text: string): Promise<void> {
 
 // ── Per-item alert (existing cron usage) ─────────────────────────────────────
 
-export async function sendTelegramAlert(item: NewsItem, symbol: string): Promise<void> {
-  await sendTelegram(buildAlertMessage(item, symbol));
+export async function sendTelegramAlert(item: NewsItem, symbol: string, appUrl = ''): Promise<void> {
+  await sendTelegram(buildAlertMessage(item, symbol, appUrl));
 }

@@ -75,7 +75,7 @@ export async function GET() {
         const key = `${symbol}:${item.id}`;
         if (pruned[key]) continue; // already alerted
 
-        await sendTelegramAlert(item, symbol);
+        await sendTelegramAlert(item, symbol, process.env.APP_URL ?? '');
         pruned[key] = now;
         sent++;
 
