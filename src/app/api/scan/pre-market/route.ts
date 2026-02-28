@@ -25,8 +25,8 @@ import {
 }                                                from '@/lib/pre-market-scanner';
 import { buildPreMarketDigestMessage, sendTelegram } from '@/lib/telegram';
 
-const DATA_DIR      = path.join(process.cwd(), 'data');
-const PM_CACHE_PATH = path.join(DATA_DIR, 'pm-scan-cache.json');
+const DATA_DIR      = '/tmp/pre-market';
+const PM_CACHE_PATH = path.join(DATA_DIR, 'scan-cache.json');
 const DIGEST_COOLDOWN = parseInt(process.env.PRE_MARKET_DIGEST_COOLDOWN_MINUTES ?? '30', 10) * 60_000;
 
 // ── Session gate ──────────────────────────────────────────────────────────────

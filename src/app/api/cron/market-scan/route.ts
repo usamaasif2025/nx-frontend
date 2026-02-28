@@ -22,7 +22,7 @@ import path                                      from 'path';
 import { fetchBroadMarketNews }                  from '@/lib/news-fetch';
 import { buildMarketScanAlertMessage, sendTelegram } from '@/lib/telegram';
 
-const DATA_DIR    = path.join(process.cwd(), 'data');
+const DATA_DIR    = '/tmp/market-scan';
 const CACHE_PATH  = path.join(DATA_DIR, 'sent-alerts.json');
 const LOG_PATH    = path.join(DATA_DIR, 'alert-log.jsonl');
 

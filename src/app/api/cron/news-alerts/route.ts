@@ -45,10 +45,10 @@ const CATALYST_BULLISH_ONLY = new Set<NewsCategory>([
 
 // ── Persistence paths ─────────────────────────────────────────────────────────
 
-const DATA_DIR    = path.join(process.cwd(), 'data');
-const CACHE_PATH  = path.join(DATA_DIR, 'news-alerts-sent.json');
-const COOL_PATH   = path.join(DATA_DIR, 'news-alerts-cooldowns.json');
-const LOG_PATH    = path.join(DATA_DIR, 'news-alerts-log.jsonl');
+const DATA_DIR    = '/tmp/news-alerts';
+const CACHE_PATH  = path.join(DATA_DIR, 'sent.json');
+const COOL_PATH   = path.join(DATA_DIR, 'cooldowns.json');
+const LOG_PATH    = path.join(DATA_DIR, 'log.jsonl');
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;   // forget items after 24h
 const COOLDOWN_MS  = parseInt(process.env.NEWS_ALERT_COOLDOWN_MINUTES ?? '10', 10) * 60_000;

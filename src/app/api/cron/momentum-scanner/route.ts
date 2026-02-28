@@ -41,7 +41,7 @@ function alpacaHeaders() {
   };
 }
 
-const DATA_DIR      = path.join(process.cwd(), 'data');
+const DATA_DIR      = '/tmp/momentum-scanner';
 const CACHE_PATH    = path.join(DATA_DIR, 'sent-alerts.json');
 const COOLDOWN_PATH = path.join(DATA_DIR, 'cooldowns.json');
 const LOG_PATH      = path.join(DATA_DIR, 'alert-log.jsonl');
