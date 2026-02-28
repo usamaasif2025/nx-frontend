@@ -206,6 +206,24 @@ function extractTag(xml: string, tag: string): string {
   return (m?.[1] ?? m?.[2] ?? '').trim();
 }
 
+/**
+ * Parse an RSS pubDate string to a unix timestamp (seconds, UTC).
+ *
+ * Handles non-standard formats emitted by specific sources:
+ *   - Investing.com: "2026-02-28 04:19:11"  → no timezone, no T separator
+ *     Their server sends UTC; we add T+Z to make it unambiguously UTC.
+ *   - Standard RFC 2822: "Fri, 28 Feb 2026 09:00:00 -0500" — native Date() handles fine.
+ */
+function parsePubDate(pub: string): number {
+  if (!pub) return 0;
+  // "YYYY-MM-DD HH:MM:SS" with no timezone → Investing.com UTC timestamp
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(pub.trim())
+    ? pub.trim().replace(' ', 'T') + 'Z'
+    : pub;
+  const ms = new Date(normalized).getTime();
+  return isNaN(ms) ? 0 : Math.floor(ms / 1000);
+}
+
 function parseRssItems(xml: string, source: 'rss' | 'google'): NewsItem[] {
   const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)];
   return itemBlocks
@@ -216,7 +234,7 @@ function parseRssItems(xml: string, source: 'rss' | 'google'): NewsItem[] {
       const pub         = extractTag(block, 'pubDate');
       const desc        = extractTag(block, 'description');
       const src         = extractTag(block, 'source');
-      const publishedAt = pub ? Math.floor(new Date(pub).getTime() / 1000) : 0;
+      const publishedAt = parsePubDate(pub);
       return {
         id:          url || title,
         title,

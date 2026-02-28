@@ -102,25 +102,34 @@ const ALL_CATEGORIES = Object.keys(CAT_META) as NewsCategory[];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+const ET_DAY_FMT  = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+const ET_TIME_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
+
 function fmtTime(unixSec: number): string {
-  return new Date(unixSec * 1000).toLocaleTimeString('en-US', {
-    timeZone: 'America/New_York',
-    hour:     '2-digit',
-    minute:   '2-digit',
-    hour12:   false,
-  }) + ' ET';
+  const d       = new Date(unixSec * 1000);
+  const timeStr = ET_TIME_FMT.format(d);                  // "04:19"
+  const artDay  = ET_DAY_FMT.format(d);
+  const todDay  = ET_DAY_FMT.format(new Date());
+  if (artDay === todDay) return timeStr + ' ET';
+
+  const diff = Math.floor((Date.now() / 1000 - unixSec) / 86_400);
+  if (diff <= 1) return 'yest ' + timeStr;
+
+  // e.g. "2/27 04:19"
+  const short = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'numeric', day: 'numeric' }).format(d);
+  return short + ' ' + timeStr;
 }
 
 function fmtTooltip(unixSec: number): string {
   return new Date(unixSec * 1000).toLocaleString('en-US', {
-    timeZone:  'America/New_York',
-    weekday:   'short',
-    month:     'short',
-    day:       'numeric',
-    hour:      '2-digit',
-    minute:    '2-digit',
-    second:    '2-digit',
-    hour12:    false,
+    timeZone:     'America/New_York',
+    weekday:      'short',
+    month:        'short',
+    day:          'numeric',
+    hour:         '2-digit',
+    minute:       '2-digit',
+    second:       '2-digit',
+    hour12:       false,
     timeZoneName: 'short',
   });
 }
@@ -163,7 +172,7 @@ function NewsRow({ item, isNew }: { item: FeedItem; isNew: boolean }) {
       }`}
     >
       {/* Time */}
-      <span className="text-[10px] font-mono text-gray-600 w-[4.5rem] shrink-0 tabular-nums" title={fmtTooltip(item.publishedAt)}>
+      <span className="text-[10px] font-mono text-gray-600 w-24 shrink-0 tabular-nums" title={fmtTooltip(item.publishedAt)}>
         {fmtTime(item.publishedAt)}
       </span>
 
@@ -491,7 +500,7 @@ export default function NewsPage() {
 
       {/* ── Column header ── */}
       <div className="flex items-center gap-2 px-3 py-1 border-b border-[#0d0d0d] shrink-0 bg-[#030303]">
-        <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-9 shrink-0">ET</span>
+        <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-24 shrink-0">TIME ET</span>
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-6 shrink-0">AGE</span>
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-10 shrink-0">SRC</span>
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-11 shrink-0">TICKER</span>
