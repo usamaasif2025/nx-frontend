@@ -25,12 +25,22 @@ interface Candle {
 }
 
 interface Props {
-  candles: Candle[];
-  regularStart: number;
-  regularEnd: number;
+  candles:        Candle[];
+  regularStart:   number;
+  regularEnd:     number;
+  closePrice?:    number;
+  preMarketPrice?:  number;
+  postMarketPrice?: number;
+  lastDayHigh?:   number;
+  lastWeekHigh?:  number;
+  lastMonthHigh?: number;
 }
 
-export default function NxChart({ candles, regularStart, regularEnd }: Props) {
+export default function NxChart({
+  candles, regularStart, regularEnd,
+  closePrice, preMarketPrice, postMarketPrice,
+  lastDayHigh, lastWeekHigh, lastMonthHigh,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
@@ -155,6 +165,25 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
 
     chart.timeScale().fitContent();
 
+    // Horizontal reference lines
+    const lines: { price: number; color: string; title: string; dash?: boolean }[] = [];
+    if (closePrice)      lines.push({ price: closePrice,      color: '#555',    title: 'Close' });
+    if (preMarketPrice)  lines.push({ price: preMarketPrice,  color: '#d97706', title: 'Pre' });
+    if (postMarketPrice) lines.push({ price: postMarketPrice, color: '#d97706', title: 'Post' });
+    if (lastDayHigh)     lines.push({ price: lastDayHigh,     color: '#ef5350', title: 'D-Hi', dash: true });
+    if (lastWeekHigh)    lines.push({ price: lastWeekHigh,    color: '#f59e0b', title: 'W-Hi', dash: true });
+    if (lastMonthHigh)   lines.push({ price: lastMonthHigh,   color: '#8b5cf6', title: 'M-Hi', dash: true });
+    for (const l of lines) {
+      candleSeries.createPriceLine({
+        price:              l.price,
+        color:              l.color,
+        lineWidth:          1,
+        lineStyle:          l.dash ? 2 : 1,
+        axisLabelVisible:   true,
+        title:              l.title,
+      });
+    }
+
     // Responsive resize
     const ro = new ResizeObserver(() => {
       if (containerRef.current) {
@@ -171,7 +200,7 @@ export default function NxChart({ candles, regularStart, regularEnd }: Props) {
       chart.remove();
       chartRef.current = null;
     };
-  }, [candles, regularStart, regularEnd]);
+  }, [candles, regularStart, regularEnd, closePrice, preMarketPrice, postMarketPrice, lastDayHigh, lastWeekHigh, lastMonthHigh]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }
