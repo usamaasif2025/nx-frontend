@@ -19,6 +19,7 @@ type FeedItem = {
   sentiment: NewsSentiment;
   isPinned: boolean;
   ticker: string | null;
+  bigBeat?: boolean;
 };
 
 type FeedResponse = {
@@ -100,6 +101,20 @@ const SENT_CLS: Record<NewsSentiment, string> = {
 const ALL_SOURCES    = Object.keys(SRC) as (keyof typeof SRC)[];
 const ALL_CATEGORIES = Object.keys(CAT_META) as NewsCategory[];
 
+// ── Catalyst Mode ─────────────────────────────────────────────────────────────
+// Categories shown in Catalyst Mode — the market-moving events the user cares about.
+const CATALYST_CATS = new Set<NewsCategory>([
+  'FDA Approval', 'Clinical Trial', 'Earnings',
+  'Merger & Acquisition', 'Major Investment',
+  'Geopolitical', 'Analyst Rating',
+]);
+
+// Within catalyst mode these categories also require bullish sentiment.
+// Geo + M&A are left open (both directions can move stocks).
+const CATALYST_BULLISH_ONLY = new Set<NewsCategory>([
+  'FDA Approval', 'Clinical Trial', 'Earnings', 'Major Investment', 'Analyst Rating',
+]);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const ET_DAY_FMT  = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -158,9 +173,10 @@ const FLASH_STYLE = `
 
 // ── News row ──────────────────────────────────────────────────────────────────
 
-function NewsRow({ item, isNew }: { item: FeedItem; isNew: boolean }) {
+function NewsRow({ item, isNew, catalystMode }: { item: FeedItem; isNew: boolean; catalystMode: boolean }) {
   const src     = SRC[item.source] ?? { short: item.source.slice(0, 4).toUpperCase(), cls: 'text-gray-500 bg-transparent border-gray-800/40', full: item.source };
   const catMeta = CAT_META[item.category];
+  const showBigBeat = item.bigBeat && (item.category === 'Earnings' || item.category === 'Analyst Rating');
 
   return (
     <a
@@ -169,7 +185,7 @@ function NewsRow({ item, isNew }: { item: FeedItem; isNew: boolean }) {
       rel="noopener noreferrer"
       className={`flex items-center gap-2 px-3 py-[5px] border-b border-[#0d0d0d] hover:bg-[#0f0f0f] group min-w-0 ${
         isNew ? 'news-flash' : ''
-      }`}
+      } ${catalystMode && showBigBeat ? 'bg-amber-950/10 hover:bg-amber-950/20' : ''}`}
     >
       {/* Time */}
       <span className="text-[10px] font-mono text-gray-600 w-24 shrink-0 tabular-nums" title={fmtTooltip(item.publishedAt)}>
@@ -191,20 +207,26 @@ function NewsRow({ item, isNew }: { item: FeedItem; isNew: boolean }) {
         {item.ticker ? `$${item.ticker}` : ''}
       </span>
 
-      {/* Category badge */}
+      {/* Category / Big-beat badge */}
       <span className="w-14 shrink-0">
-        {catMeta.label && (
+        {showBigBeat ? (
+          <span className="text-[7px] font-black tracking-wider px-1 py-0.5 rounded border bg-amber-950/60 border-amber-600/60 text-amber-300 whitespace-nowrap">
+            ⚡ BIG
+          </span>
+        ) : catMeta.label ? (
           <span className={`text-[7px] font-bold tracking-wider px-1 py-0.5 rounded border ${catMeta.cls}`}>
             {catMeta.label}
           </span>
-        )}
+        ) : null}
       </span>
 
       {/* Sentiment dot */}
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SENT_CLS[item.sentiment]}`} title={item.sentiment} />
 
       {/* Headline */}
-      <span className="flex-1 text-[11px] text-gray-400 group-hover:text-gray-100 transition-colors truncate leading-none">
+      <span className={`flex-1 text-[11px] group-hover:text-gray-100 transition-colors truncate leading-none ${
+        catalystMode && showBigBeat ? 'text-amber-200/80' : 'text-gray-400'
+      }`}>
         {item.title}
       </span>
 
@@ -287,10 +309,11 @@ export default function NewsPage() {
   const [newCount,   setNewCount]   = useState(0);
 
   // Filters
-  const [search,     setSearch]     = useState('');
-  const [activeSrcs, setActiveSrcs] = useState<Set<string>>(new Set());
-  const [activeCats, setActiveCats] = useState<Set<NewsCategory>>(new Set());
-  const [sentiment,  setSentiment]  = useState<NewsSentiment | 'all'>('all');
+  const [catalystMode, setCatalystMode] = useState(false);
+  const [search,       setSearch]       = useState('');
+  const [activeSrcs,   setActiveSrcs]   = useState<Set<string>>(new Set());
+  const [activeCats,   setActiveCats]   = useState<Set<NewsCategory>>(new Set());
+  const [sentiment,    setSentiment]    = useState<NewsSentiment | 'all'>('all');
 
   const fetchingRef  = useRef(false);
   const seenIdsRef   = useRef<Set<string>>(new Set());
@@ -342,9 +365,19 @@ export default function NewsPage() {
     setActiveCats(p => { const n = new Set(p); n.has(c) ? n.delete(c) : n.add(c); return n; });
 
   const filtered = items.filter(item => {
-    if (activeSrcs.size > 0 && !activeSrcs.has(item.source))   return false;
-    if (activeCats.size > 0 && !activeCats.has(item.category)) return false;
-    if (sentiment !== 'all' && item.sentiment !== sentiment)    return false;
+    // Source filter always applies in both modes
+    if (activeSrcs.size > 0 && !activeSrcs.has(item.source)) return false;
+
+    if (catalystMode) {
+      // Only the 7 catalyst categories pass
+      if (!CATALYST_CATS.has(item.category)) return false;
+      // Most require bullish sentiment; Geo + M&A are neutral/bearish-ok
+      if (CATALYST_BULLISH_ONLY.has(item.category) && item.sentiment !== 'bullish') return false;
+    } else {
+      if (activeCats.size > 0 && !activeCats.has(item.category)) return false;
+      if (sentiment !== 'all' && item.sentiment !== sentiment)    return false;
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!item.title.toLowerCase().includes(q) &&
@@ -414,18 +447,47 @@ export default function NewsPage() {
       </div>
 
       {/* ── Filter bar ── */}
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-[#111] bg-[#050505] shrink-0 overflow-x-auto">
+      <div className={`flex items-center gap-2 px-3 py-1.5 border-b shrink-0 overflow-x-auto transition-colors ${
+        catalystMode ? 'border-amber-900/40 bg-amber-950/10' : 'border-[#111] bg-[#050505]'
+      }`}>
 
-        {/* Search */}
+        {/* ⚡ CATALYST MODE toggle — always visible, always first */}
+        <button
+          onClick={() => setCatalystMode(m => !m)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-black tracking-wider transition-all shrink-0 ${
+            catalystMode
+              ? 'bg-amber-500/15 text-amber-300 border-amber-500/50 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
+              : 'text-gray-500 border-[#222] hover:text-amber-400 hover:border-amber-800/60'
+          }`}
+          title="Toggle Catalyst Mode — show only high-impact bullish catalysts"
+        >
+          <span>⚡</span>
+          <span>CATALYST</span>
+          {catalystMode && (
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              <span className="text-[8px] text-amber-400/80">ON</span>
+            </span>
+          )}
+        </button>
+
+        {/* Divider */}
+        <span className="w-px h-3 bg-[#222] shrink-0" />
+
+        {/* Search — always visible */}
         <input
           type="text"
           value={search}
           onChange={e => setSearch(e.target.value)}
-          placeholder="Search ticker, headline..."
-          className="bg-[#0d0d0d] border border-[#1a1a1a] rounded px-2 py-1 text-[10px] text-gray-300 placeholder-gray-700 focus:outline-none focus:border-[#26a69a]/40 w-44 shrink-0"
+          placeholder={catalystMode ? 'Search catalysts…' : 'Search ticker, headline…'}
+          className={`border rounded px-2 py-1 text-[10px] text-gray-300 placeholder-gray-700 focus:outline-none w-44 shrink-0 transition-colors ${
+            catalystMode
+              ? 'bg-amber-950/20 border-amber-900/40 focus:border-amber-600/50'
+              : 'bg-[#0d0d0d] border-[#1a1a1a] focus:border-[#26a69a]/40'
+          }`}
         />
 
-        {/* Sources dropdown */}
+        {/* Sources dropdown — always visible */}
         <FilterDropdown label="Sources" count={activeSrcs.size}>
           {ALL_SOURCES.map(src => (
             <CheckItem
@@ -443,59 +505,57 @@ export default function NewsPage() {
           )}
         </FilterDropdown>
 
-        {/* Category dropdown */}
-        <FilterDropdown label="Category" count={activeCats.size}>
-          {ALL_CATEGORIES.filter(c => CAT_META[c].label).map(cat => (
-            <CheckItem
-              key={cat}
-              label={`${CAT_META[cat].label} — ${cat}`}
-              checked={activeCats.has(cat)}
-              onChange={() => toggleCat(cat)}
-            />
-          ))}
-          {activeCats.size > 0 && (
-            <button onClick={() => setActiveCats(new Set())} className="text-[9px] text-gray-600 hover:text-gray-400 px-2 pt-1 text-left">
-              clear all
-            </button>
-          )}
-        </FilterDropdown>
+        {/* Category + Sentiment — hidden when catalyst mode is active */}
+        {!catalystMode && (
+          <>
+            <FilterDropdown label="Category" count={activeCats.size}>
+              {ALL_CATEGORIES.filter(c => CAT_META[c].label).map(cat => (
+                <CheckItem
+                  key={cat}
+                  label={`${CAT_META[cat].label} — ${cat}`}
+                  checked={activeCats.has(cat)}
+                  onChange={() => toggleCat(cat)}
+                />
+              ))}
+              {activeCats.size > 0 && (
+                <button onClick={() => setActiveCats(new Set())} className="text-[9px] text-gray-600 hover:text-gray-400 px-2 pt-1 text-left">
+                  clear all
+                </button>
+              )}
+            </FilterDropdown>
 
-        {/* Sentiment */}
-        {(['all', 'bullish', 'bearish', 'neutral'] as const).map(s => (
-          <button
-            key={s}
-            onClick={() => setSentiment(s)}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold tracking-wide transition-all shrink-0 ${
-              sentiment === s
-                ? s === 'bullish' ? 'bg-[#26a69a]/15 text-[#26a69a] border border-[#26a69a]/40'
-                : s === 'bearish' ? 'bg-[#ef5350]/15 text-[#ef5350] border border-[#ef5350]/40'
-                : 'bg-[#1a1a1a] text-gray-300 border border-[#333]'
-                : 'text-gray-600 hover:text-gray-400'
-            }`}
-          >
-            {s !== 'all' && (
-              <span className={`w-1.5 h-1.5 rounded-full ${SENT_CLS[s as NewsSentiment]}`} />
-            )}
-            {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
-          </button>
-        ))}
+            {(['all', 'bullish', 'bearish', 'neutral'] as const).map(s => (
+              <button
+                key={s}
+                onClick={() => setSentiment(s)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold tracking-wide transition-all shrink-0 ${
+                  sentiment === s
+                    ? s === 'bullish' ? 'bg-[#26a69a]/15 text-[#26a69a] border border-[#26a69a]/40'
+                    : s === 'bearish' ? 'bg-[#ef5350]/15 text-[#ef5350] border border-[#ef5350]/40'
+                    : 'bg-[#1a1a1a] text-gray-300 border border-[#333]'
+                    : 'text-gray-600 hover:text-gray-400'
+                }`}
+              >
+                {s !== 'all' && (
+                  <span className={`w-1.5 h-1.5 rounded-full ${SENT_CLS[s as NewsSentiment]}`} />
+                )}
+                {s === 'all' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
+              </button>
+            ))}
+          </>
+        )}
 
-        {/* Catalyst only toggle */}
-        <button
-          onClick={() => {
-            const catalystCats: NewsCategory[] = ['FDA Approval','Clinical Trial','Merger & Acquisition','Partnership','Government Contract','Major Investment','Geopolitical','Earnings','Analyst Rating'];
-            const allActive = catalystCats.every(c => activeCats.has(c));
-            if (allActive) setActiveCats(new Set());
-            else setActiveCats(new Set(catalystCats));
-          }}
-          className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold tracking-wide transition-all shrink-0 border ${
-            activeCats.size === 9
-              ? 'bg-amber-950/30 text-amber-400 border-amber-800/50'
-              : 'text-gray-600 border-[#1a1a1a] hover:text-amber-400 hover:border-amber-800/50'
-          }`}
-        >
-          ⚡ Catalyst
-        </button>
+        {/* Catalyst mode active — show what's being filtered */}
+        {catalystMode && (
+          <div className="flex items-center gap-1.5 ml-1">
+            {(['FDA', 'TRIAL', 'EARN', 'M&A', 'INVEST', 'GEO', 'ANALYST'] as const).map(tag => (
+              <span key={tag} className="text-[7px] font-bold tracking-wider px-1 py-0.5 rounded border border-amber-800/40 text-amber-600/80 bg-amber-950/20 shrink-0">
+                {tag}
+              </span>
+            ))}
+            <span className="text-[9px] text-amber-700 ml-1">· bullish only (except GEO + M&amp;A)</span>
+          </div>
+        )}
       </div>
 
       {/* ── Column header ── */}
@@ -527,12 +587,14 @@ export default function NewsPage() {
 
         {!loading && !error && filtered.length === 0 && items.length > 0 && (
           <div className="flex items-center justify-center h-32">
-            <p className="text-[10px] text-gray-700">No items match the current filters</p>
+            <p className="text-[10px] text-gray-700">
+              {catalystMode ? 'No catalyst events in the last 6h' : 'No items match the current filters'}
+            </p>
           </div>
         )}
 
         {filtered.map(item => (
-          <NewsRow key={item.id} item={item} isNew={newIds.has(item.id)} />
+          <NewsRow key={item.id} item={item} isNew={newIds.has(item.id)} catalystMode={catalystMode} />
         ))}
       </div>
     </div>

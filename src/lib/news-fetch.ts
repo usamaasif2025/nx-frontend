@@ -33,6 +33,7 @@ export interface NewsItem {
   category: NewsCategory;
   sentiment: NewsSentiment;
   isPinned: boolean;
+  bigBeat?: boolean; // true for standout earnings beats or major analyst raises
 }
 
 // ── Category detection ────────────────────────────────────────────────────────
@@ -146,6 +147,8 @@ const BULLISH_PAT = [
   /strong (quarter|results?|revenue|sales)/i, /\bgain[sed]?\b/i,
   /\bexceed[sed]?\b/i, /partnership/i, /positive (results?|data|trial)/i,
   /\braise[sd]? guidance\b/i, /\bbeat[sed]? estimate/i,
+  /raises? (price )?target/i, /boosts? (price )?target/i,
+  /hikes? (price )?target/i, /increases? (price )?target/i,
 ];
 
 const BEARISH_PAT = [
@@ -166,6 +169,40 @@ export function getSentiment(title: string, summary: string | null): NewsSentime
   if (bull > bear) return 'bullish';
   if (bear > bull) return 'bearish';
   return 'neutral';
+}
+
+// ── Big-beat detection ────────────────────────────────────────────────────────
+// Patterns that signal an especially strong catalyst — used to apply the
+// "BIG BEAT" badge in the news feed and in Catalyst Mode ranking.
+
+const BIG_BEAT_PATS = [
+  // Record-setting results
+  /record (quarter|revenue|earnings?|profit|sales|results?)/i,
+  /\brecord-breaking\b/i,
+  /best (quarter|year|results?) in \d/i,
+  // Blowout / crush language
+  /blowout (quarter|earnings?|results?)/i,
+  /\bcrush(es|ed)?\b.{0,60}\bestimate/i,
+  /\bsmash(es|ed)?\b.{0,60}\bestimate/i,
+  // Beat + guidance raise in same headline
+  /beat.{0,80}raise[sd]? (guidance|outlook|forecast)/i,
+  /raises? (guidance|outlook|forecast).{0,80}beat/i,
+  /raised? (annual|full.year|fy\d?) (guidance|outlook|forecast)/i,
+  // Top / surpass wall street
+  /top(ped|s)? (wall street|analyst|consensus) estimate/i,
+  /surpasse?[sd]? (wall street|analyst|consensus)/i,
+  // Magnitude qualifiers
+  /significant(ly)? (beat|exceed|surpass)/i,
+  /(massive|huge|monster|blockbuster) (beat|quarter|earnings?)/i,
+  // Analyst: major raise or initiation at strong buy
+  /raises? (price )?target.{0,30}\$\d{2,}/i,
+  /initiates?.{0,20}(strong buy|outperform|buy)/i,
+];
+
+/** Returns true for earnings or analyst items that carry an especially strong signal. */
+export function isBigBeat(title: string, summary: string | null): boolean {
+  const text = `${title} ${summary ?? ''}`;
+  return BIG_BEAT_PATS.some(p => p.test(text));
 }
 
 // ── Source 1: Yahoo Finance JSON ──────────────────────────────────────────────
@@ -701,12 +738,16 @@ export async function fetchAllMarketNews(): Promise<{
   const items = all.map(item => {
     const category  = categorize(item.title, item.summary);
     const sentiment = getSentiment(item.title, item.summary);
+    const bigBeat   = (category === 'Earnings' || category === 'Analyst Rating')
+      ? isBigBeat(item.title, item.summary)
+      : false;
     return {
       ...item,
       category,
       sentiment,
       isPinned: HIGH_IMPACT.includes(category),
-      ticker: extractTicker(`${item.title} ${item.summary ?? ''}`),
+      ticker:   extractTicker(`${item.title} ${item.summary ?? ''}`),
+      bigBeat,
     };
   });
 
