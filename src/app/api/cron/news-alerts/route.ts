@@ -27,6 +27,7 @@ import path                          from 'path';
 import { fetchAllMarketNews }        from '@/lib/news-fetch';
 import type { NewsCategory }         from '@/lib/news-fetch';
 import { buildCatalystNewsAlert, sendTelegram } from '@/lib/telegram';
+import { scoreNewsRelevance }        from '@/lib/news-score';
 
 export const runtime    = 'nodejs';
 export const maxDuration = 60;
@@ -139,6 +140,16 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      // ── AI relevance score ────────────────────────────────────────────────
+      const scored = await scoreNewsRelevance(
+        item.title, item.summary ?? '', item.category, ticker, item.sentiment,
+      );
+      if (!testMode && !scored.actionable) {
+        await appendLog({ ...logBase, sent: false, reason: `ai-score:${scored.score}`, aiReason: scored.reason });
+        skipped++;
+        continue;
+      }
+
       // ── Send ──────────────────────────────────────────────────────────────
       const text     = buildCatalystNewsAlert(item, ticker, bigBeat);
       const chartUrl = ticker && appUrl ? `${appUrl}/?symbol=${ticker}&tf=1m` : undefined;
@@ -150,7 +161,7 @@ export async function GET(req: NextRequest) {
       sent++;
 
       sentItems.push({ ticker, title: item.title, category: item.category, bigBeat });
-      await appendLog({ ...logBase, sent: true, reason: null });
+      await appendLog({ ...logBase, aiScore: scored.score, sent: true, reason: null });
 
       // Telegram rate limit: max 30 msg/sec
       await new Promise(r => setTimeout(r, 350));

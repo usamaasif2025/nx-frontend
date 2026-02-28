@@ -21,6 +21,7 @@ import fs                                        from 'fs/promises';
 import path                                      from 'path';
 import { fetchBroadMarketNews }                  from '@/lib/news-fetch';
 import { buildMarketScanAlertMessage, sendTelegram } from '@/lib/telegram';
+import { scoreNewsRelevance }                    from '@/lib/news-score';
 
 const DATA_DIR    = '/tmp/market-scan';
 const CACHE_PATH  = path.join(DATA_DIR, 'sent-alerts.json');
@@ -108,6 +109,16 @@ export async function GET() {
         continue;
       }
 
+      // ── AI relevance score ────────────────────────────────────────────────
+      const scored = await scoreNewsRelevance(
+        item.title, item.summary ?? '', item.category, ticker ?? null, item.sentiment,
+      );
+      if (!scored.actionable) {
+        await appendLog({ ...logBase, sent: false, reason: `ai-score:${scored.score}`, aiReason: scored.reason });
+        skipped++;
+        continue;
+      }
+
       // ── Send ──────────────────────────────────────────────────────────────
       const text     = buildMarketScanAlertMessage(item, ticker);
       const chartUrl = ticker && appUrl ? `${appUrl}/?symbol=${ticker}&tf=1m` : undefined;
@@ -117,7 +128,7 @@ export async function GET() {
       cooldownMap[cooldownKey] = now;
       sent++;
 
-      await appendLog({ ...logBase, sent: true, reason: null });
+      await appendLog({ ...logBase, aiScore: scored.score, sent: true, reason: null });
 
       // Stay within Telegram's 30 msg/sec limit
       await new Promise(r => setTimeout(r, 300));

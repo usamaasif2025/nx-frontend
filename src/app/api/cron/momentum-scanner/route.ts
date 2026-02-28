@@ -30,6 +30,7 @@ import fs                     from 'fs/promises';
 import path                   from 'path';
 import { fetchNewsForSymbol } from '@/lib/news-fetch';
 import { buildMomentumAlertMessage, sendTelegram } from '@/lib/telegram';
+import { scoreNewsRelevance } from '@/lib/news-score';
 
 const ALPACA_DATA = 'https://data.alpaca.markets';
 
@@ -246,6 +247,16 @@ export async function GET() {
           continue;
         }
 
+        // ── AI relevance score ──────────────────────────────────────────────
+        const scored = await scoreNewsRelevance(
+          item.title, item.summary ?? '', item.category, mover.symbol, item.sentiment,
+        );
+        if (!scored.actionable) {
+          await appendLog({ ...logBase, sent: false, reason: `ai-score:${scored.score}`, aiReason: scored.reason });
+          skipped_dedupe++;
+          continue;
+        }
+
         // Send alert
         const text = buildMomentumAlertMessage(
           mover.symbol, mover.name, mover.price,
@@ -262,7 +273,7 @@ export async function GET() {
         sent++;
         totalSent++;
 
-        await appendLog({ ...logBase, sent: true, reason: null });
+        await appendLog({ ...logBase, aiScore: scored.score, sent: true, reason: null });
         await new Promise(r => setTimeout(r, 300));
 
         // ── ONE alert per ticker per cycle — prevents spam ────────────────
