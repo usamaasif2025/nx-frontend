@@ -119,15 +119,6 @@ const CATEGORY_RULES: Array<{ category: NewsCategory; patterns: RegExp[] }> = [
     ],
   },
   {
-    category: 'Geopolitical',
-    patterns: [
-      /\bsanction/i, /\bembargo\b/i, /trade war/i, /\btariff/i,
-      /geopolit/i, /\bwar\b/i, /\bconflict\b/i, /\bRussia\b/,
-      /\bChina\b/, /\bUkraine\b/, /\bIran\b/, /North Korea/i,
-      /export ban/i, /\bNATO\b/, /export control/i,
-    ],
-  },
-  {
     category: 'Earnings',
     patterns: [
       /\bearnings\b/i, /\brevenue\b/i, /\bEPS\b/, /quarterly (results?|report)/i,
@@ -142,6 +133,26 @@ const CATEGORY_RULES: Array<{ category: NewsCategory; patterns: RegExp[] }> = [
       /\binitiate[sd]?\b/i, /\boutperform\b/i, /\bunderperform\b/i,
       /\boverweight\b/i, /\bunderweight\b/i, /buy rating/i, /sell rating/i,
       /\bneutral rating\b/i, /coverage (initiated|started)/i,
+    ],
+  },
+  {
+    category: 'Geopolitical',
+    patterns: [
+      // Unambiguous geopolitical terms (no country name required)
+      /\bsanction/i, /\bembargo\b/i, /trade war/i, /\btariff/i,
+      /geopolit/i, /export ban/i, /export control/i, /\bNATO\b/,
+      // Armed conflict — require explicit military/war context to avoid "price war", "conflict of interest"
+      /\b(military|armed) conflict\b/i,
+      /\b(airstrike|ceasefire|invasion|annexation|warfront)\b/i,
+      // Russia / Ukraine / Iran / North Korea — require geopolitical context word nearby
+      /\b(Russia|Ukraine|Iran|North Korea)\b.{0,80}(sanction|war|invasion|troops|military|nuclear|missile|embargo|airstrike|attack|conflict)/i,
+      /(sanction|war|invasion|troops|military|nuclear|missile|embargo|airstrike|attack|conflict).{0,80}\b(Russia|Ukraine|Iran|North Korea)\b/i,
+      // Israel / Gaza / Hamas — geopolitical conflict zone
+      /\b(Israel|Gaza|Hamas|Hezbollah|West Bank)\b.{0,60}(war|attack|invasion|troops|military|airstrike|ceasefire|conflict)/i,
+      /(war|attack|invasion|troops|military|airstrike|ceasefire|conflict).{0,60}\b(Israel|Gaza|Hamas|Hezbollah|West Bank)\b/i,
+      // China — ONLY with geopolitical context; plain "China" (e.g. "China revenue") falls to General/Earnings
+      /\bChina\b.{0,60}(tariff|trade war|sanction|export ban|export control|South China Sea|Taiwan Strait|Taiwan independence|military|troops|invasion)/i,
+      /(tariff|trade war|sanction|export ban|export control|South China Sea|Taiwan Strait|military|troops|invasion).{0,60}\bChina\b/i,
     ],
   },
 ];

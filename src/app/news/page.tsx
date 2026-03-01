@@ -101,6 +101,37 @@ const SENT_CLS: Record<NewsSentiment, string> = {
 const ALL_SOURCES    = Object.keys(SRC) as (keyof typeof SRC)[];
 const ALL_CATEGORIES = Object.keys(CAT_META) as NewsCategory[];
 
+// ── Impact score (rule-based, 0-100) ──────────────────────────────────────────
+
+const CAT_BASE_SCORE: Record<NewsCategory, number> = {
+  'FDA Approval':         85,
+  'Merger & Acquisition': 78,
+  'Clinical Trial':       75,
+  'Earnings':             72,
+  'Major Investment':     65,
+  'Government Contract':  62,
+  'Analyst Rating':       60,
+  'Geopolitical':         58,
+  'Partnership':          52,
+  'General':              20,
+};
+
+function computeScore(item: FeedItem): number {
+  let s = CAT_BASE_SCORE[item.category] ?? 20;
+  if (item.sentiment === 'bullish') s += 10;
+  else if (item.sentiment === 'bearish') s += 5;
+  if (item.isPinned) s += 5;
+  if (item.bigBeat) s += 10;
+  return Math.min(100, s);
+}
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'text-emerald-400';
+  if (score >= 65) return 'text-yellow-400';
+  if (score >= 50) return 'text-orange-400';
+  return 'text-gray-600';
+}
+
 // ── Catalyst Mode ─────────────────────────────────────────────────────────────
 // Categories shown in Catalyst Mode — the market-moving events the user cares about.
 const CATALYST_CATS = new Set<NewsCategory>([
@@ -177,6 +208,7 @@ function NewsRow({ item, isNew, catalystMode }: { item: FeedItem; isNew: boolean
   const src     = SRC[item.source] ?? { short: item.source.slice(0, 4).toUpperCase(), cls: 'text-gray-500 bg-transparent border-gray-800/40', full: item.source };
   const catMeta = CAT_META[item.category];
   const showBigBeat = item.bigBeat && (item.category === 'Earnings' || item.category === 'Analyst Rating');
+  const score = computeScore(item);
 
   return (
     <a
@@ -220,14 +252,26 @@ function NewsRow({ item, isNew, catalystMode }: { item: FeedItem; isNew: boolean
         ) : null}
       </span>
 
+      {/* Impact score */}
+      <span className={`w-8 shrink-0 text-[9px] font-mono font-bold tabular-nums ${scoreColor(score)}`} title={`Impact score: ${score}/100`}>
+        {score}
+      </span>
+
       {/* Sentiment dot */}
       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SENT_CLS[item.sentiment]}`} title={item.sentiment} />
 
-      {/* Headline */}
-      <span className={`flex-1 text-[11px] group-hover:text-gray-100 transition-colors truncate leading-none ${
-        catalystMode && showBigBeat ? 'text-amber-200/80' : 'text-gray-400'
-      }`}>
-        {item.title}
+      {/* Headline + NEW badge */}
+      <span className="flex-1 min-w-0 flex items-center gap-1.5">
+        {isNew && (
+          <span className="text-[7px] font-black tracking-wider px-1 py-0.5 rounded border bg-[#26a69a]/15 border-[#26a69a]/50 text-[#26a69a] shrink-0">
+            NEW
+          </span>
+        )}
+        <span className={`text-[11px] group-hover:text-gray-100 transition-colors truncate leading-none ${
+          catalystMode && showBigBeat ? 'text-amber-200/80' : 'text-gray-400'
+        }`}>
+          {item.title}
+        </span>
       </span>
 
       {/* Publisher (right-aligned, hidden on small screens) */}
@@ -332,9 +376,10 @@ export default function NewsPage() {
       const added       = new Set([...incomingIds].filter(id => !seenIdsRef.current.has(id)));
 
       if (seenIdsRef.current.size > 0 && added.size > 0) {
+        // Replace previous "new" set — old NEW badges clear automatically when
+        // a fresh batch of newer articles arrives (next 30 s refresh cycle).
         setNewIds(added);
         setNewCount(added.size);
-        setTimeout(() => setNewIds(new Set()), 8_000);
       }
 
       seenIdsRef.current = incomingIds;
@@ -565,6 +610,7 @@ export default function NewsPage() {
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-10 shrink-0">SRC</span>
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-11 shrink-0">TICKER</span>
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-14 shrink-0">TYPE</span>
+        <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase w-8 shrink-0">SCR</span>
         <span className="w-1.5 shrink-0" />
         <span className="text-[8px] font-bold tracking-widest text-gray-700 uppercase flex-1">HEADLINE</span>
       </div>
