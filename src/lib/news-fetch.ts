@@ -33,6 +33,7 @@ export interface NewsItem {
   category: NewsCategory;
   sentiment: NewsSentiment;
   isPinned: boolean;
+  bigBeat?: boolean; // true for standout earnings beats or major analyst raises
 }
 
 // ── Category detection ────────────────────────────────────────────────────────
@@ -95,18 +96,26 @@ const CATEGORY_RULES: Array<{ category: NewsCategory; patterns: RegExp[] }> = [
   {
     category: 'Major Investment',
     patterns: [
-      /\binvests?\b/i, /stake in/i, /raises? \$\d/i, /\bIPO\b/,
+      // Existing
+      /\binvests?\b/i, /stake in/i, /\bIPO\b/,
       /secondary offering/i, /private placement/i, /\bwarrant\b/i,
       /convertible note/i, /\bfunding round\b/i, /Series [A-Z] /i,
-    ],
-  },
-  {
-    category: 'Geopolitical',
-    patterns: [
-      /\bsanction/i, /\bembargo\b/i, /trade war/i, /\btariff/i,
-      /geopolit/i, /\bwar\b/i, /\bconflict\b/i, /\bRussia\b/,
-      /\bChina\b/, /\bUkraine\b/, /\bIran\b/, /North Korea/i,
-      /export ban/i, /\bNATO\b/, /export control/i,
+      // All tenses of "raise" + dollar amount
+      /raises? \$\d/i, /raising \$\d/i, /raised \$\d/i,
+      // Offering types missed before
+      /equity offering/i, /public offering/i,
+      /stock (offering|sale)/i, /share (offering|sale)/i,
+      /follow.on offering/i, /registered direct/i,
+      /at.the.market offering/i, /\bATM offering\b/i,
+      /bought deal/i, /equity financ/i, /underwritten offering/i,
+      // Action verbs on a dollar amount
+      /prices? \$\d/i, /completes? \$\d/i, /closes? \$\d/i,
+      // Selling stock (all verb forms)
+      /sells?.{0,30}shares?\b/i, /selling.{0,30}shares?\b/i, /sold.{0,30}shares?\b/i,
+      // "$175M offering" — amount before the word
+      /\$\d+.{0,30}offering/i,
+      // "upsizes offering" — almost exclusively equity raise language
+      /\bupsizes?\b/i,
     ],
   },
   {
@@ -124,6 +133,26 @@ const CATEGORY_RULES: Array<{ category: NewsCategory; patterns: RegExp[] }> = [
       /\binitiate[sd]?\b/i, /\boutperform\b/i, /\bunderperform\b/i,
       /\boverweight\b/i, /\bunderweight\b/i, /buy rating/i, /sell rating/i,
       /\bneutral rating\b/i, /coverage (initiated|started)/i,
+    ],
+  },
+  {
+    category: 'Geopolitical',
+    patterns: [
+      // Unambiguous geopolitical terms (no country name required)
+      /\bsanction/i, /\bembargo\b/i, /trade war/i, /\btariff/i,
+      /geopolit/i, /export ban/i, /export control/i, /\bNATO\b/,
+      // Armed conflict — require explicit military/war context to avoid "price war", "conflict of interest"
+      /\b(military|armed) conflict\b/i,
+      /\b(airstrike|ceasefire|invasion|annexation|warfront)\b/i,
+      // Russia / Ukraine / Iran / North Korea — require geopolitical context word nearby
+      /\b(Russia|Ukraine|Iran|North Korea)\b.{0,80}(sanction|war|invasion|troops|military|nuclear|missile|embargo|airstrike|attack|conflict)/i,
+      /(sanction|war|invasion|troops|military|nuclear|missile|embargo|airstrike|attack|conflict).{0,80}\b(Russia|Ukraine|Iran|North Korea)\b/i,
+      // Israel / Gaza / Hamas — geopolitical conflict zone
+      /\b(Israel|Gaza|Hamas|Hezbollah|West Bank)\b.{0,60}(war|attack|invasion|troops|military|airstrike|ceasefire|conflict)/i,
+      /(war|attack|invasion|troops|military|airstrike|ceasefire|conflict).{0,60}\b(Israel|Gaza|Hamas|Hezbollah|West Bank)\b/i,
+      // China — ONLY with geopolitical context; plain "China" (e.g. "China revenue") falls to General/Earnings
+      /\bChina\b.{0,60}(tariff|trade war|sanction|export ban|export control|South China Sea|Taiwan Strait|Taiwan independence|military|troops|invasion)/i,
+      /(tariff|trade war|sanction|export ban|export control|South China Sea|Taiwan Strait|military|troops|invasion).{0,60}\bChina\b/i,
     ],
   },
 ];
@@ -146,6 +175,17 @@ const BULLISH_PAT = [
   /strong (quarter|results?|revenue|sales)/i, /\bgain[sed]?\b/i,
   /\bexceed[sed]?\b/i, /partnership/i, /positive (results?|data|trial)/i,
   /\braise[sd]? guidance\b/i, /\bbeat[sed]? estimate/i,
+  /raises? (price )?target/i, /boosts? (price )?target/i,
+  /hikes? (price )?target/i, /increases? (price )?target/i,
+  // Equity raise — securing capital is inherently bullish
+  /\boversubscribed\b/i, /\bupsized?\b/i,
+  /raises? \$\d/i, /raising \$\d/i, /raised \$\d/i,
+  /announces?.{0,20}\$\d/i,
+  /completes?.{0,40}(offering|raise|financing)/i,
+  /closes?.{0,40}(offering|raise|financing)/i,
+  /pric(es?|ed|ing).{0,40}(offering|deal)/i,
+  /(offering|deal).{0,20}pric(es?|ed|ing)/i,
+  /sells?.{0,30}shares?\b/i,
 ];
 
 const BEARISH_PAT = [
@@ -157,6 +197,8 @@ const BEARISH_PAT = [
   /\bshortfall\b/i, /weaker? (than expected|results?|revenue)/i,
   /\bright[- ]issue\b/i, /missed (estimates|expectations)/i,
   /\bcut[sd]? guidance\b/i, /\blowers? (guidance|outlook)\b/i,
+  // Equity raise bearish signals
+  /\bdilutive\b/i, /dilutes? (shareholders?|equity)/i,
 ];
 
 export function getSentiment(title: string, summary: string | null): NewsSentiment {
@@ -166,6 +208,40 @@ export function getSentiment(title: string, summary: string | null): NewsSentime
   if (bull > bear) return 'bullish';
   if (bear > bull) return 'bearish';
   return 'neutral';
+}
+
+// ── Big-beat detection ────────────────────────────────────────────────────────
+// Patterns that signal an especially strong catalyst — used to apply the
+// "BIG BEAT" badge in the news feed and in Catalyst Mode ranking.
+
+const BIG_BEAT_PATS = [
+  // Record-setting results
+  /record (quarter|revenue|earnings?|profit|sales|results?)/i,
+  /\brecord-breaking\b/i,
+  /best (quarter|year|results?) in \d/i,
+  // Blowout / crush language
+  /blowout (quarter|earnings?|results?)/i,
+  /\bcrush(es|ed)?\b.{0,60}\bestimate/i,
+  /\bsmash(es|ed)?\b.{0,60}\bestimate/i,
+  // Beat + guidance raise in same headline
+  /beat.{0,80}raise[sd]? (guidance|outlook|forecast)/i,
+  /raises? (guidance|outlook|forecast).{0,80}beat/i,
+  /raised? (annual|full.year|fy\d?) (guidance|outlook|forecast)/i,
+  // Top / surpass wall street
+  /top(ped|s)? (wall street|analyst|consensus) estimate/i,
+  /surpasse?[sd]? (wall street|analyst|consensus)/i,
+  // Magnitude qualifiers
+  /significant(ly)? (beat|exceed|surpass)/i,
+  /(massive|huge|monster|blockbuster) (beat|quarter|earnings?)/i,
+  // Analyst: major raise or initiation at strong buy
+  /raises? (price )?target.{0,30}\$\d{2,}/i,
+  /initiates?.{0,20}(strong buy|outperform|buy)/i,
+];
+
+/** Returns true for earnings or analyst items that carry an especially strong signal. */
+export function isBigBeat(title: string, summary: string | null): boolean {
+  const text = `${title} ${summary ?? ''}`;
+  return BIG_BEAT_PATS.some(p => p.test(text));
 }
 
 // ── Source 1: Yahoo Finance JSON ──────────────────────────────────────────────
@@ -206,6 +282,24 @@ function extractTag(xml: string, tag: string): string {
   return (m?.[1] ?? m?.[2] ?? '').trim();
 }
 
+/**
+ * Parse an RSS pubDate string to a unix timestamp (seconds, UTC).
+ *
+ * Handles non-standard formats emitted by specific sources:
+ *   - Investing.com: "2026-02-28 04:19:11"  → no timezone, no T separator
+ *     Their server sends UTC; we add T+Z to make it unambiguously UTC.
+ *   - Standard RFC 2822: "Fri, 28 Feb 2026 09:00:00 -0500" — native Date() handles fine.
+ */
+function parsePubDate(pub: string): number {
+  if (!pub) return 0;
+  // "YYYY-MM-DD HH:MM:SS" with no timezone → Investing.com UTC timestamp
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(pub.trim())
+    ? pub.trim().replace(' ', 'T') + 'Z'
+    : pub;
+  const ms = new Date(normalized).getTime();
+  return isNaN(ms) ? 0 : Math.floor(ms / 1000);
+}
+
 function parseRssItems(xml: string, source: 'rss' | 'google'): NewsItem[] {
   const itemBlocks = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/gi)];
   return itemBlocks
@@ -216,7 +310,7 @@ function parseRssItems(xml: string, source: 'rss' | 'google'): NewsItem[] {
       const pub         = extractTag(block, 'pubDate');
       const desc        = extractTag(block, 'description');
       const src         = extractTag(block, 'source');
-      const publishedAt = pub ? Math.floor(new Date(pub).getTime() / 1000) : 0;
+      const publishedAt = parsePubDate(pub);
       return {
         id:          url || title,
         title,
@@ -683,12 +777,16 @@ export async function fetchAllMarketNews(): Promise<{
   const items = all.map(item => {
     const category  = categorize(item.title, item.summary);
     const sentiment = getSentiment(item.title, item.summary);
+    const bigBeat   = (category === 'Earnings' || category === 'Analyst Rating')
+      ? isBigBeat(item.title, item.summary)
+      : false;
     return {
       ...item,
       category,
       sentiment,
       isPinned: HIGH_IMPACT.includes(category),
-      ticker: extractTicker(`${item.title} ${item.summary ?? ''}`),
+      ticker:   extractTicker(`${item.title} ${item.summary ?? ''}`),
+      bigBeat,
     };
   });
 

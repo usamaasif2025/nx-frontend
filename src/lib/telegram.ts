@@ -265,6 +265,47 @@ export async function sendTelegramAlert(item: NewsItem, symbol: string, appUrl =
   await sendTelegram(buildAlertMessage(item, symbol), chartUrl);
 }
 
+// ── Catalyst news feed alert ───────────────────────────────────────────────────
+// Fired by /api/cron/news-alerts whenever a new catalyst item clears the
+// Catalyst Mode filter (FDA/Trial/Earnings/M&A/Investment/Geo/Analyst).
+
+export function buildCatalystNewsAlert(
+  item:     NewsItem,
+  ticker:   string | null,
+  bigBeat:  boolean,
+): string {
+  const catEmoji  = CATEGORY_EMOJI[item.category] ?? '📰';
+  const sentEmoji = SENTIMENT_EMOJI[item.sentiment];
+  const age       = timeAgo(item.publishedAt);
+
+  const tickerLine = ticker
+    ? `🏷 <b>$${escapeHtml(ticker)}</b>  —  ${catEmoji} <b>${escapeHtml(item.category.toUpperCase())}</b>`
+    : `${catEmoji}  <b>${escapeHtml(item.category.toUpperCase())}</b>  <i>(ticker not detected)</i>`;
+
+  const lines = [
+    bigBeat
+      ? `⚡ <b>BIG BEAT — CATALYST ALERT</b>`
+      : `⚡ <b>CATALYST ALERT</b>`,
+    ``,
+    tickerLine,
+    `📈 Sentiment: ${sentEmoji}`,
+  ];
+
+  if (bigBeat) {
+    lines.push(`🔥 <b>HIGH-CONVICTION — Record / Blowout / Beat + Raise</b>`);
+  }
+
+  lines.push(
+    ``,
+    `<b>${escapeHtml(item.title)}</b>`,
+    ``,
+    `📰 ${escapeHtml(item.publisher)} · ${age}`,
+    `<a href="${escapeUrl(item.url)}">Read Article →</a>`,
+  );
+
+  return lines.join('\n');
+}
+
 // ── Broad market scan alert ───────────────────────────────────────────────────
 
 export function buildMarketScanAlertMessage(item: NewsItem, ticker: string | null): string {
