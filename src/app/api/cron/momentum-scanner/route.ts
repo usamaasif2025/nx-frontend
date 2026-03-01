@@ -72,7 +72,7 @@ interface Mover {
 interface LogEntry {
   ts: string; ticker: string; category: string;
   headline_id: string; source: string; title: string;
-  sent: boolean; reason: string | null;
+  sent: boolean; reason: string | null; aiReason?: string; aiScore?: number;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
