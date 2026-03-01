@@ -96,9 +96,26 @@ const CATEGORY_RULES: Array<{ category: NewsCategory; patterns: RegExp[] }> = [
   {
     category: 'Major Investment',
     patterns: [
-      /\binvests?\b/i, /stake in/i, /raises? \$\d/i, /\bIPO\b/,
+      // Existing
+      /\binvests?\b/i, /stake in/i, /\bIPO\b/,
       /secondary offering/i, /private placement/i, /\bwarrant\b/i,
       /convertible note/i, /\bfunding round\b/i, /Series [A-Z] /i,
+      // All tenses of "raise" + dollar amount
+      /raises? \$\d/i, /raising \$\d/i, /raised \$\d/i,
+      // Offering types missed before
+      /equity offering/i, /public offering/i,
+      /stock (offering|sale)/i, /share (offering|sale)/i,
+      /follow.on offering/i, /registered direct/i,
+      /at.the.market offering/i, /\bATM offering\b/i,
+      /bought deal/i, /equity financ/i, /underwritten offering/i,
+      // Action verbs on a dollar amount
+      /prices? \$\d/i, /completes? \$\d/i, /closes? \$\d/i,
+      // Selling stock
+      /selling.{0,20}shares?\b/i, /sold.{0,20}shares?\b/i,
+      // "$175M offering" — amount before the word
+      /\$\d+.{0,30}offering/i,
+      // "upsizes offering" — almost exclusively equity raise language
+      /\bupsizes?\b/i,
     ],
   },
   {
@@ -149,6 +166,8 @@ const BULLISH_PAT = [
   /\braise[sd]? guidance\b/i, /\bbeat[sed]? estimate/i,
   /raises? (price )?target/i, /boosts? (price )?target/i,
   /hikes? (price )?target/i, /increases? (price )?target/i,
+  // Equity raise bullish signals
+  /\boversubscribed\b/i, /\bupsized?\b/i,
 ];
 
 const BEARISH_PAT = [
@@ -160,6 +179,8 @@ const BEARISH_PAT = [
   /\bshortfall\b/i, /weaker? (than expected|results?|revenue)/i,
   /\bright[- ]issue\b/i, /missed (estimates|expectations)/i,
   /\bcut[sd]? guidance\b/i, /\blowers? (guidance|outlook)\b/i,
+  // Equity raise bearish signals
+  /\bdilutive\b/i, /dilutes? (shareholders?|equity)/i,
 ];
 
 export function getSentiment(title: string, summary: string | null): NewsSentiment {
