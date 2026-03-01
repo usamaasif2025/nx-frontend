@@ -8,6 +8,47 @@ interface NewsItem {
   url:         string;
   publisher:   string;
   publishedAt: number;
+  category:    string;
+  sentiment:   'bullish' | 'bearish' | 'neutral';
+  bigBeat:     boolean;
+  isPinned:    boolean;
+  score:       number;
+  scoreReason: string;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  'FDA Approval':         '💊',
+  'Clinical Trial':       '🧪',
+  'Merger & Acquisition': '🤝',
+  'Partnership':          '🤝',
+  'Government Contract':  '🏛️',
+  'Major Investment':     '💰',
+  'Geopolitical':         '🌍',
+  'Earnings':             '📊',
+  'Analyst Rating':       '📈',
+  'General':              '📰',
+};
+
+const SENTIMENT_DOT: Record<string, string> = {
+  bullish: '🟢',
+  bearish: '🔴',
+  neutral: '⚪',
+};
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'text-emerald-400';
+  if (score >= 65) return 'text-yellow-400';
+  if (score >= 40) return 'text-orange-400';
+  return 'text-gray-600';
+}
+
+function scoreBg(score: number): string {
+  if (score >= 80) return 'bg-emerald-400/10 border-emerald-400/20';
+  if (score >= 65) return 'bg-yellow-400/10 border-yellow-400/20';
+  if (score >= 40) return 'bg-orange-400/10 border-orange-400/20';
+  return 'bg-white/5 border-white/10';
 }
 
 const ET_TIME = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -31,6 +72,8 @@ function timeAgo(unixSec: number): string {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return `${Math.floor(diff / 86400)}d ago`;
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function NewsPanel({ symbol }: { symbol: string }) {
   const [items,   setItems]   = useState<NewsItem[]>([]);
@@ -76,9 +119,9 @@ export default function NewsPanel({ symbol }: { symbol: string }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
         {loading && items.length === 0 && (
-          <div className="flex items-center justify-center h-24 gap-2 text-gray-600 text-[10px]">
+          <div className="flex flex-col items-center justify-center h-24 gap-2 text-gray-600 text-[10px]">
             <span className="w-3 h-3 border border-[#26a69a]/30 border-t-[#26a69a] rounded-full animate-spin" />
-            Loading…
+            Scoring news…
           </div>
         )}
 
@@ -97,10 +140,39 @@ export default function NewsPanel({ symbol }: { symbol: string }) {
             target="_blank"
             rel="noopener noreferrer"
             className="block px-3 py-2 border-b border-[#0d0d0d] hover:bg-white/[0.03] transition-colors group"
+            title={item.scoreReason}
           >
+            {/* Score + category row */}
+            <div className="flex items-center gap-1.5 mb-1">
+              {/* AI score badge */}
+              <span className={`inline-flex items-center px-1 py-0 rounded border text-[9px] font-bold font-mono tabular-nums ${scoreColor(item.score)} ${scoreBg(item.score)}`}>
+                {item.score}
+              </span>
+
+              {/* Category emoji + name */}
+              <span className="text-[9px] text-gray-500 flex items-center gap-0.5 truncate">
+                <span>{CATEGORY_EMOJI[item.category] ?? '📰'}</span>
+                {item.category !== 'General' && (
+                  <span className="truncate">{item.category}</span>
+                )}
+              </span>
+
+              <span className="ml-auto flex items-center gap-1 shrink-0">
+                {/* Big beat indicator */}
+                {item.bigBeat && (
+                  <span className="text-[9px]" title="Big Beat">⚡</span>
+                )}
+                {/* Sentiment dot */}
+                <span className="text-[9px]">{SENTIMENT_DOT[item.sentiment] ?? '⚪'}</span>
+              </span>
+            </div>
+
+            {/* Headline */}
             <p className="text-[11px] text-gray-300 group-hover:text-gray-100 leading-snug line-clamp-3 transition-colors">
               {item.title}
             </p>
+
+            {/* Publisher + time */}
             <div className="mt-1 flex items-center gap-2 text-[9px] text-gray-700">
               <span className="font-mono tabular-nums text-gray-600">{fmtTime(item.publishedAt)}</span>
               <span>·</span>
