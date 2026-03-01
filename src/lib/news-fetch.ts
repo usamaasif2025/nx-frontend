@@ -166,8 +166,12 @@ const BULLISH_PAT = [
   /\braise[sd]? guidance\b/i, /\bbeat[sed]? estimate/i,
   /raises? (price )?target/i, /boosts? (price )?target/i,
   /hikes? (price )?target/i, /increases? (price )?target/i,
-  // Equity raise bullish signals
+  // Equity raise — securing capital is inherently bullish
   /\boversubscribed\b/i, /\bupsized?\b/i,
+  /raises? \$\d/i, /raising \$\d/i, /raised \$\d/i,
+  /completes?.{0,20}(offering|raise|financing)/i,
+  /closes?.{0,20}(offering|raise|financing)/i,
+  /prices?.{0,20}(offering|deal)/i,
 ];
 
 const BEARISH_PAT = [
