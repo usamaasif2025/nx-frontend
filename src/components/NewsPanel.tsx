@@ -14,6 +14,26 @@ interface NewsItem {
   isPinned:    boolean;
   score:       number;
   scoreReason: string;
+  isNew:       boolean;
+}
+
+// ── localStorage helpers for NEW badge tracking ───────────────────────────────
+
+function seenKey(symbol: string) { return `news-seen:${symbol}`; }
+
+function getSeenUrls(symbol: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(seenKey(symbol));
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+
+function saveSeenUrls(symbol: string, urls: string[]) {
+  try {
+    const seen = getSeenUrls(symbol);
+    urls.forEach(u => seen.add(u));
+    localStorage.setItem(seenKey(symbol), JSON.stringify([...seen].slice(-200)));
+  } catch { /* storage unavailable */ }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,8 +105,16 @@ export default function NewsPanel({ symbol }: { symbol: string }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await axios.get(`/api/news/symbol?symbol=${symbol}`);
-      setItems(res.data.items ?? []);
+      const res  = await axios.get(`/api/news/symbol?symbol=${symbol}`);
+      const raw: Omit<NewsItem, 'isNew'>[] = res.data.items ?? [];
+      const seen        = getSeenUrls(symbol);
+      const isFirstVisit = seen.size === 0;
+      const withNew = raw.map(item => ({
+        ...item,
+        isNew: !isFirstVisit && !seen.has(item.url),
+      }));
+      saveSeenUrls(symbol, raw.map(i => i.url));
+      setItems(withNew);
     } catch {
       setError('Could not load news');
     } finally {
@@ -148,6 +176,13 @@ export default function NewsPanel({ symbol }: { symbol: string }) {
               <span className={`inline-flex items-center px-1 py-0 rounded border text-[9px] font-bold font-mono tabular-nums ${scoreColor(item.score)} ${scoreBg(item.score)}`}>
                 {item.score}
               </span>
+
+              {/* NEW badge */}
+              {item.isNew && (
+                <span className="inline-flex items-center px-1 py-0 rounded border text-[8px] font-black tracking-wide bg-[#26a69a]/15 border-[#26a69a]/40 text-[#26a69a] animate-pulse">
+                  NEW
+                </span>
+              )}
 
               {/* Category emoji + name */}
               <span className="text-[9px] text-gray-500 flex items-center gap-0.5 truncate">
