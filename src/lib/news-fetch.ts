@@ -110,8 +110,8 @@ const CATEGORY_RULES: Array<{ category: NewsCategory; patterns: RegExp[] }> = [
       /bought deal/i, /equity financ/i, /underwritten offering/i,
       // Action verbs on a dollar amount
       /prices? \$\d/i, /completes? \$\d/i, /closes? \$\d/i,
-      // Selling stock
-      /selling.{0,20}shares?\b/i, /sold.{0,20}shares?\b/i,
+      // Selling stock (all verb forms)
+      /sells?.{0,30}shares?\b/i, /selling.{0,30}shares?\b/i, /sold.{0,30}shares?\b/i,
       // "$175M offering" — amount before the word
       /\$\d+.{0,30}offering/i,
       // "upsizes offering" — almost exclusively equity raise language
@@ -169,9 +169,12 @@ const BULLISH_PAT = [
   // Equity raise — securing capital is inherently bullish
   /\boversubscribed\b/i, /\bupsized?\b/i,
   /raises? \$\d/i, /raising \$\d/i, /raised \$\d/i,
-  /completes?.{0,20}(offering|raise|financing)/i,
-  /closes?.{0,20}(offering|raise|financing)/i,
-  /prices?.{0,20}(offering|deal)/i,
+  /announces?.{0,20}\$\d/i,
+  /completes?.{0,40}(offering|raise|financing)/i,
+  /closes?.{0,40}(offering|raise|financing)/i,
+  /pric(es?|ed|ing).{0,40}(offering|deal)/i,
+  /(offering|deal).{0,20}pric(es?|ed|ing)/i,
+  /sells?.{0,30}shares?\b/i,
 ];
 
 const BEARISH_PAT = [
